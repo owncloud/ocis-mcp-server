@@ -1,0 +1,89 @@
+<evaluation>
+  <questions>
+    <!--
+      Evaluation questions for ocis-mcp-server.
+      All questions are read-only, independent, require 3+ tool calls,
+      realistic, and produce stable answers. At least 5 categories covered.
+    -->
+
+    <!-- Category: Admin + Spaces -->
+    <question id="1">
+      <text>What version of oCIS is running, what are its file-size upload limits from capabilities, and how many project spaces currently exist?</text>
+      <expected_tools>ocis_get_version, ocis_get_capabilities, ocis_list_spaces</expected_tools>
+      <category>Admin, Spaces</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Users + Groups + Settings -->
+    <question id="2">
+      <text>List all users, then list all groups, and finally list all available roles. How many of each exist?</text>
+      <expected_tools>ocis_list_users, ocis_list_groups, ocis_list_roles</expected_tools>
+      <category>Users, Groups, Settings</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Spaces + Files -->
+    <question id="3">
+      <text>List the authenticated user's spaces, pick the personal space, and list the files at its root. Then get detailed info on the first file found.</text>
+      <expected_tools>ocis_list_my_spaces, ocis_list_files, ocis_get_file_info</expected_tools>
+      <category>Spaces, Files</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Users + Spaces + Shares -->
+    <question id="4">
+      <text>Get the current user's profile, list all shares they have created, and list all shares they have received. Summarize the sharing activity.</text>
+      <expected_tools>ocis_get_me, ocis_list_shared_by_me, ocis_list_received_shares</expected_tools>
+      <category>Users, Shares</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Admin + Notifications + App Tokens -->
+    <question id="5">
+      <text>Perform a health check on the oCIS instance, list the current user's notifications, and list their app tokens. Report the status of each.</text>
+      <expected_tools>ocis_health_check, ocis_list_notifications, ocis_list_app_tokens</expected_tools>
+      <category>Admin, Notifications, App Tokens</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Search + Files + Spaces -->
+    <question id="6">
+      <text>Search for files containing "report" across all spaces. For each result, get the file info and identify which space it belongs to by looking up the space details.</text>
+      <expected_tools>ocis_search, ocis_get_file_info, ocis_get_space</expected_tools>
+      <category>Search, Files, Spaces</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Spaces + Shares + Files -->
+    <question id="7">
+      <text>List all project spaces, pick one, list its permissions, and list the files at its root. Who has access and what is stored there?</text>
+      <expected_tools>ocis_list_spaces, ocis_list_space_permissions, ocis_list_files</expected_tools>
+      <category>Spaces, Shares, Files</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Users + Groups -->
+    <question id="8">
+      <text>List all users, then list all groups, and for each group retrieve its details including members. Which users belong to which groups?</text>
+      <expected_tools>ocis_list_users, ocis_list_groups, ocis_get_group</expected_tools>
+      <category>Users, Groups</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Admin + Settings -->
+    <question id="9">
+      <text>Get the MCP server configuration, the oCIS server capabilities, and the list of role assignments. Summarize the current system setup.</text>
+      <expected_tools>ocis_get_config, ocis_get_capabilities, ocis_list_assignments</expected_tools>
+      <category>Admin, Settings</category>
+      <min_tool_calls>3</min_tool_calls>
+    </question>
+
+    <!-- Category: Spaces + Files + Search -->
+    <question id="10">
+      <text>Get an overview of each of the user's spaces using the workflow tool, then search for any files tagged with a specific tag, and get version info for the oCIS server. Provide a comprehensive status report.</text>
+      <expected_tools>ocis_list_my_spaces, ocis_get_space_overview, ocis_search_by_tag, ocis_get_version</expected_tools>
+      <category>Spaces, Files, Search, Admin</category>
+      <min_tool_calls>4</min_tool_calls>
+    </question>
+  </questions>
+</evaluation>

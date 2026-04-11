@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+  <d:response>
+    <d:href>/dav/spaces/space1/Documents/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <d:displayname>Documents</d:displayname>
+        <d:getcontentlength>0</d:getcontentlength>
+        <d:getlastmodified>Mon, 10 Mar 2025 14:30:00 GMT</d:getlastmodified>
+        <d:getetag>"abc123"</d:getetag>
+        <oc:fileid>fileid-parent</oc:fileid>
+        <oc:permissions>RDNVCK</oc:permissions>
+        <oc:size>204800</oc:size>
+        <oc:owner-id>einstein</oc:owner-id>
+        <oc:owner-display-name>Albert Einstein</oc:owner-display-name>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/spaces/space1/Documents/report.pdf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:displayname>report.pdf</d:displayname>
+        <d:getcontentlength>102400</d:getcontentlength>
+        <d:getcontenttype>application/pdf</d:getcontenttype>
+        <d:getlastmodified>Tue, 11 Mar 2025 09:15:00 GMT</d:getlastmodified>
+        <d:getetag>"def456"</d:getetag>
+        <oc:fileid>fileid-file1</oc:fileid>
+        <oc:permissions>RDNVW</oc:permissions>
+        <oc:size>102400</oc:size>
+        <oc:owner-id>einstein</oc:owner-id>
+        <oc:owner-display-name>Albert Einstein</oc:owner-display-name>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/spaces/space1/Documents/Drafts/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <d:displayname>Drafts</d:displayname>
+        <d:getcontentlength>0</d:getcontentlength>
+        <d:getlastmodified>Wed, 12 Mar 2025 16:45:00 GMT</d:getlastmodified>
+        <d:getetag>"ghi789"</d:getetag>
+        <oc:fileid>fileid-subfolder</oc:fileid>
+        <oc:permissions>RDNVCK</oc:permissions>
+        <oc:size>51200</oc:size>
+        <oc:owner-id>einstein</oc:owner-id>
+        <oc:owner-display-name>Albert Einstein</oc:owner-display-name>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
