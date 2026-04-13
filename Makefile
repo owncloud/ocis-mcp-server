@@ -1,11 +1,13 @@
-.PHONY: build test lint cover clean docker-build
+.PHONY: build test lint cover clean docker-build release-dry-run
 
-BINARY := ocis-mcp-server
-MODULE := github.com/owncloud/ocis-mcp-server
-IMAGE  := owncloud/ocis-mcp-server
+BINARY  := ocis-mcp-server
+MODULE  := github.com/owncloud/ocis-mcp-server
+IMAGE   := owncloud/ocis-mcp-server
+VERSION ?= dev
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
 build:
-	go build -trimpath -ldflags="-s -w" -o bin/$(BINARY) ./cmd/ocis-mcp-server
+	go build -trimpath -ldflags="$(LDFLAGS)" -o bin/$(BINARY) ./cmd/ocis-mcp-server
 
 test:
 	go test -race ./...
@@ -24,3 +26,6 @@ clean:
 
 docker-build:
 	docker build -t $(IMAGE):latest .
+
+release-dry-run:
+	goreleaser release --snapshot --clean
