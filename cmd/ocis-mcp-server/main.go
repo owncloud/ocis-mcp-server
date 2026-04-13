@@ -94,7 +94,7 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down HTTP server")
-		srv.Close()
+		_ = srv.Close()
 	}()
 
 	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
