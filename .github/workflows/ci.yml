@@ -58,3 +58,38 @@ jobs:
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: latest
+
+  verify-commits:
+    name: Verify Commit Signatures
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Verify all commits are signed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "Checking commit signatures from $BASE_SHA to $HEAD_SHA"
+          UNSIGNED=""
+          for COMMIT in $(git rev-list "$BASE_SHA".."$HEAD_SHA"); do
+            RESULT=$(git log --format='%G?' -1 "$COMMIT")
+            SUBJECT=$(git log --format='%s' -1 "$COMMIT")
+            case "$RESULT" in
+              G|U|X|Y)
+                echo "  [SIGNED]   $COMMIT $SUBJECT"
+                ;;
+              *)
+                echo "  [UNSIGNED] $COMMIT $SUBJECT"
+                UNSIGNED="$UNSIGNED $COMMIT"
+                ;;
+            esac
+          done
+          if [ -n "$UNSIGNED" ]; then
+            echo ""
+            echo "::warning::Unsigned commits detected. See https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification"
+          fi
