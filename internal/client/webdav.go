@@ -10,12 +10,6 @@ import (
 	"strings"
 )
 
-// WebDAV XML namespace constants.
-const (
-	davNS = "DAV:"
-	ocNS  = "http://owncloud.org/ns"
-)
-
 // MultiStatus represents a WebDAV 207 Multi-Status response.
 type MultiStatus struct {
 	XMLName   xml.Name   `xml:"DAV: multistatus"`
@@ -161,7 +155,7 @@ func Propfind(ctx context.Context, c *Client, path string, depth string) (*Multi
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &APIError{StatusCode: 404, Message: "resource not found: " + path}
@@ -187,7 +181,7 @@ func Mkcol(ctx context.Context, c *Client, path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -207,7 +201,7 @@ func Upload(ctx context.Context, c *Client, path string, content io.Reader, cont
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -224,7 +218,7 @@ func Download(ctx context.Context, c *Client, path string) ([]byte, string, erro
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, "", errorFromResponse(resp)
 	}
@@ -248,7 +242,7 @@ func Move(ctx context.Context, c *Client, srcPath, destPath string, overwrite bo
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -271,7 +265,7 @@ func Copy(ctx context.Context, c *Client, srcPath, destPath string, overwrite bo
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -288,7 +282,7 @@ func WebDAVDelete(ctx context.Context, c *Client, path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -334,7 +328,7 @@ func SearchReport(ctx context.Context, c *Client, path, pattern string, limit, o
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMultiStatus && resp.StatusCode != http.StatusOK {
 		return nil, errorFromResponse(resp)
@@ -351,7 +345,7 @@ func SearchReport(ctx context.Context, c *Client, path, pattern string, limit, o
 func Proppatch(ctx context.Context, c *Client, path string, setProps map[string]string) error {
 	var propEntries strings.Builder
 	for k, v := range setProps {
-		propEntries.WriteString(fmt.Sprintf("<%s>%s</%s>", k, xmlEscape(v), k))
+		fmt.Fprintf(&propEntries, "<%s>%s</%s>", k, xmlEscape(v), k)
 	}
 
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -373,7 +367,7 @@ func Proppatch(ctx context.Context, c *Client, path string, setProps map[string]
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -382,6 +376,6 @@ func Proppatch(ctx context.Context, c *Client, path string, setProps map[string]
 
 func xmlEscape(s string) string {
 	var buf bytes.Buffer
-	xml.EscapeText(&buf, []byte(s))
+	_ = xml.EscapeText(&buf, []byte(s))
 	return buf.String()
 }

@@ -43,7 +43,7 @@ func TestHandleListEducationSchools(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -82,7 +82,7 @@ func TestHandleGetEducationSchool(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(200)
-				w.Write([]byte(`{"id":"sch1","displayName":"Test School"}`))
+				_, _ = w.Write([]byte(`{"id":"sch1","displayName":"Test School"}`))
 			}))
 			defer srv.Close()
 
@@ -106,7 +106,7 @@ func TestHandleListEducationUsers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"eu1","displayName":"Student A"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"eu1","displayName":"Student A"}]}`))
 	}))
 	defer srv.Close()
 
@@ -136,7 +136,7 @@ func TestHandleGetEducationUser(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(200)
-				w.Write([]byte(`{"id":"eu1","displayName":"Student A"}`))
+				_, _ = w.Write([]byte(`{"id":"eu1","displayName":"Student A"}`))
 			}))
 			defer srv.Close()
 
@@ -175,7 +175,7 @@ func TestHandleCreateEducationUser(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(201)
-				w.Write([]byte(`{"id":"eu-new","displayName":"Student"}`))
+				_, _ = w.Write([]byte(`{"id":"eu-new","displayName":"Student"}`))
 			}))
 			defer srv.Close()
 

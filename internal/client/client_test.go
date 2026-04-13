@@ -74,7 +74,7 @@ func TestAuthHeaderInjection(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Do failed: %v", err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			if !strings.HasPrefix(gotAuth, tt.wantPrefix) {
 				t.Errorf("Authorization header = %q, want prefix %q", gotAuth, tt.wantPrefix)
@@ -115,7 +115,7 @@ func TestErrorMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(`{}`))
+				_, _ = w.Write([]byte(`{}`))
 			}))
 			defer srv.Close()
 
@@ -258,7 +258,7 @@ func TestRateLimitRetry(t *testing.T) {
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"ok":true}`))
+				_, _ = w.Write([]byte(`{"ok":true}`))
 			}))
 			defer srv.Close()
 
@@ -275,13 +275,13 @@ func TestRateLimitRetry(t *testing.T) {
 				if err != nil {
 					t.Fatalf("expected success, got error: %v", err)
 				}
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if resp.StatusCode != tt.wantStatusCode {
 					t.Errorf("StatusCode = %d, want %d", resp.StatusCode, tt.wantStatusCode)
 				}
 			} else {
 				if err == nil {
-					resp.Body.Close()
+					_ = resp.Body.Close()
 					t.Fatal("expected error after exhausted retries, got nil")
 				}
 				apiErr, ok := err.(*APIError)
@@ -343,7 +343,7 @@ func TestDoJSONSetsAcceptHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAccept = r.Header.Get("Accept")
 		w.WriteHeader(200)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
@@ -353,7 +353,7 @@ func TestDoJSONSetsAcceptHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if gotAccept != "application/json" {
 		t.Errorf("Accept = %q, want application/json", gotAccept)
 	}
@@ -364,7 +364,7 @@ func TestDoJSONPreservesExistingAcceptHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAccept = r.Header.Get("Accept")
 		w.WriteHeader(200)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
@@ -375,7 +375,7 @@ func TestDoJSONPreservesExistingAcceptHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if gotAccept != "text/xml" {
 		t.Errorf("Accept = %q, want text/xml", gotAccept)
 	}

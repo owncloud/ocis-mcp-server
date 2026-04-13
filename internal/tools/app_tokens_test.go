@@ -43,7 +43,7 @@ func TestHandleListAppTokens(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -71,7 +71,7 @@ func TestHandleCreateAppToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"token":"new-token-value","label":"Test","expiry":"2025-12-31"}`))
+		_, _ = w.Write([]byte(`{"token":"new-token-value","label":"Test","expiry":"2025-12-31"}`))
 	}))
 	defer srv.Close()
 

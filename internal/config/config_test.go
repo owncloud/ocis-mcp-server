@@ -15,15 +15,15 @@ func clearEnv() {
 		"OCIS_MCP_TRANSPORT", "OCIS_MCP_HTTP_ADDR", "OCIS_MCP_LOG_LEVEL",
 		"OCIS_MCP_INSECURE", "OCIS_MCP_TLS_SKIP_VERIFY", "OCIS_MCP_HTTP_TIMEOUT",
 	} {
-		os.Unsetenv(k)
+		_ = os.Unsetenv(k)
 	}
 }
 
 func TestLoadMinimalConfig(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
 
 	cfg, err := Load()
 	if err != nil {
@@ -56,9 +56,9 @@ func TestLoadMissingURL(t *testing.T) {
 
 func TestLoadHTTPWithoutInsecure(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
 
 	_, err := Load()
 	if err == nil {
@@ -68,10 +68,10 @@ func TestLoadHTTPWithoutInsecure(t *testing.T) {
 
 func TestLoadHTTPWithInsecure(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	os.Setenv("OCIS_MCP_INSECURE", "true")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_INSECURE", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -84,10 +84,10 @@ func TestLoadHTTPWithInsecure(t *testing.T) {
 
 func TestLoadInvalidTransport(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	os.Setenv("OCIS_MCP_TRANSPORT", "grpc")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_TRANSPORT", "grpc")
 
 	_, err := Load()
 	if err == nil {
@@ -97,10 +97,10 @@ func TestLoadInvalidTransport(t *testing.T) {
 
 func TestLoadAmbiguousAuth(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
 
 	_, err := Load()
 	if err == nil {
@@ -110,11 +110,11 @@ func TestLoadAmbiguousAuth(t *testing.T) {
 
 func TestLoadExplicitAuthMode(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
-	os.Setenv("OCIS_MCP_AUTH_MODE", "oidc")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_AUTH_MODE", "oidc")
 
 	cfg, err := Load()
 	if err != nil {
@@ -127,8 +127,8 @@ func TestLoadExplicitAuthMode(t *testing.T) {
 
 func TestLoadOIDCAutoDetect(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
 
 	cfg, err := Load()
 	if err != nil {
@@ -141,7 +141,7 @@ func TestLoadOIDCAutoDetect(t *testing.T) {
 
 func TestLoadNoAuth(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
 
 	cfg, err := Load()
 	if err != nil {
@@ -154,8 +154,8 @@ func TestLoadNoAuth(t *testing.T) {
 
 func TestLoadCustomTimeout(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_HTTP_TIMEOUT", "60s")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_HTTP_TIMEOUT", "60s")
 
 	cfg, err := Load()
 	if err != nil {
@@ -168,8 +168,8 @@ func TestLoadCustomTimeout(t *testing.T) {
 
 func TestLoadInvalidTimeout(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_HTTP_TIMEOUT", "not-a-duration")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_HTTP_TIMEOUT", "not-a-duration")
 
 	_, err := Load()
 	if err == nil {
@@ -179,7 +179,7 @@ func TestLoadInvalidTimeout(t *testing.T) {
 
 func TestLoadInvalidURLScheme(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "ftp://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "ftp://ocis.example.com")
 
 	_, err := Load()
 	if err == nil {
@@ -256,8 +256,7 @@ func TestEnvBool(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.val, func(t *testing.T) {
-			os.Setenv("TEST_BOOL", tt.val)
-			defer os.Unsetenv("TEST_BOOL")
+			t.Setenv("TEST_BOOL", tt.val)
 			if got := envBool("TEST_BOOL"); got != tt.want {
 				t.Errorf("envBool(%q) = %v, want %v", tt.val, got, tt.want)
 			}
@@ -267,9 +266,9 @@ func TestEnvBool(t *testing.T) {
 
 func TestLoadHTTPTransport(t *testing.T) {
 	clearEnv()
-	os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	os.Setenv("OCIS_MCP_TRANSPORT", "http")
-	os.Setenv("OCIS_MCP_HTTP_ADDR", "0.0.0.0:9090")
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
+	_ = os.Setenv("OCIS_MCP_HTTP_ADDR", "0.0.0.0:9090")
 
 	cfg, err := Load()
 	if err != nil {

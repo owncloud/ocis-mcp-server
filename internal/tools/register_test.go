@@ -7,7 +7,6 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
-	"github.com/owncloud/ocis-mcp-server/internal/config"
 )
 
 func TestRegisterAll(t *testing.T) {
@@ -52,6 +51,3 @@ func TestRegisterEducationDisabled(t *testing.T) {
 	registerEducation(s, c, false)
 }
 
-func newTestConfigFromConfig(srvURL string) *config.Config {
-	return newTestConfig(srvURL)
-}

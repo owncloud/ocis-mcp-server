@@ -43,7 +43,7 @@ func TestHandleListOCMProviders(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -86,7 +86,7 @@ func TestHandleCreateOCMShare(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(201)
-				w.Write([]byte(`{"id":"ocm1","name":"shared-file"}`))
+				_, _ = w.Write([]byte(`{"id":"ocm1","name":"shared-file"}`))
 			}))
 			defer srv.Close()
 
@@ -112,7 +112,7 @@ func TestHandleListOCMShares(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`[{"id":"ocm1"},{"id":"ocm2"}]`))
+		_, _ = w.Write([]byte(`[{"id":"ocm1"},{"id":"ocm2"}]`))
 	}))
 	defer srv.Close()
 
@@ -131,7 +131,7 @@ func TestHandleListOCMReceived(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`null`))
+		_, _ = w.Write([]byte(`null`))
 	}))
 	defer srv.Close()
 

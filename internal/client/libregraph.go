@@ -30,7 +30,7 @@ func GetJSON[T any](ctx context.Context, c *Client, path string, query url.Value
 	if err != nil {
 		return zero, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var result T
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return zero, fmt.Errorf("decoding response: %w", err)
@@ -52,7 +52,7 @@ func ListJSON[T any](ctx context.Context, c *Client, path string, query url.Valu
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var result listResponse[T]
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decoding list response: %w", err)
@@ -76,7 +76,7 @@ func PostJSON[T any](ctx context.Context, c *Client, path string, body any) (T, 
 	if err != nil {
 		return zero, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var result T
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return zero, fmt.Errorf("decoding response: %w", err)
@@ -100,7 +100,7 @@ func PatchJSON[T any](ctx context.Context, c *Client, path string, body any) (T,
 	if err != nil {
 		return zero, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var result T
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return zero, fmt.Errorf("decoding response: %w", err)
@@ -118,7 +118,7 @@ func Delete(ctx context.Context, c *Client, path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -138,7 +138,7 @@ func DeleteWithHeaders(ctx context.Context, c *Client, path string, headers map[
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return errorFromResponse(resp)
 	}
@@ -160,7 +160,7 @@ func PostJSONRaw(ctx context.Context, c *Client, path string, body any) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return io.ReadAll(resp.Body)
 }
 
@@ -174,7 +174,7 @@ func GetRaw(ctx context.Context, c *Client, path string) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
 	return body, resp.StatusCode, err
 }

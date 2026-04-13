@@ -59,10 +59,10 @@ func TestPropfind(t *testing.T) {
 				if tt.statusCode == 207 {
 					w.Header().Set("Content-Type", "application/xml")
 					w.WriteHeader(http.StatusMultiStatus)
-					w.Write(body)
+					_, _ = w.Write(body)
 				} else {
 					w.WriteHeader(tt.statusCode)
-					w.Write([]byte(`{}`))
+					_, _ = w.Write([]byte(`{}`))
 				}
 			}))
 			defer srv.Close()
@@ -269,7 +269,7 @@ func TestSearchReport(t *testing.T) {
 				} else {
 					w.WriteHeader(tt.statusCode)
 				}
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -394,7 +394,7 @@ func TestDownload(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", tt.contentType)
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -629,7 +629,7 @@ func TestPropfindFixture(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusMultiStatus)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 

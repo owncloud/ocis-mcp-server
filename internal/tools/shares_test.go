@@ -27,7 +27,7 @@ func TestHandleCreateShare(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(200)
-				w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+				_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
 			}))
 			defer srv.Close()
 
@@ -54,7 +54,7 @@ func TestHandleCreateLink(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
+		_, _ = w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
 	}))
 	defer srv.Close()
 
@@ -75,7 +75,7 @@ func TestHandleListShares(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"p1"},{"id":"p2"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"p1"},{"id":"p2"}]}`))
 	}))
 	defer srv.Close()
 
@@ -96,7 +96,7 @@ func TestHandleUpdateShare(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"p1","roles":["editor"]}`))
+		_, _ = w.Write([]byte(`{"id":"p1","roles":["editor"]}`))
 	}))
 	defer srv.Close()
 
@@ -117,7 +117,7 @@ func TestHandleUpdateShareExpiration(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"p1","expirationDateTime":"2025-12-31T00:00:00Z"}`))
+		_, _ = w.Write([]byte(`{"id":"p1","expirationDateTime":"2025-12-31T00:00:00Z"}`))
 	}))
 	defer srv.Close()
 
@@ -173,7 +173,7 @@ func TestHandleListSharedByMe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"i1","name":"doc.pdf"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"i1","name":"doc.pdf"}]}`))
 	}))
 	defer srv.Close()
 
@@ -192,7 +192,7 @@ func TestHandleListReceivedShares(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[]}`))
+		_, _ = w.Write([]byte(`{"value":[]}`))
 	}))
 	defer srv.Close()
 
@@ -265,7 +265,7 @@ func TestHandleGetSharingRoles(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"},{"id":"r2","displayName":"Editor"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"},{"id":"r2","displayName":"Editor"}]}`))
 	}))
 	defer srv.Close()
 

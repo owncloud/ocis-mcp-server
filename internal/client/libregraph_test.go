@@ -61,7 +61,7 @@ func TestListJSON(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				w.Write(body)
+				_, _ = w.Write(body)
 			}))
 			defer srv.Close()
 
@@ -120,7 +120,7 @@ func TestGetJSON(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(tt.response))
+				_, _ = w.Write([]byte(tt.response))
 			}))
 			defer srv.Close()
 
@@ -176,7 +176,7 @@ func TestPostJSON(t *testing.T) {
 				gotContentType = r.Header.Get("Content-Type")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(`{"id":"new-user-id","displayName":"New User"}`))
+				_, _ = w.Write([]byte(`{"id":"new-user-id","displayName":"New User"}`))
 			}))
 			defer srv.Close()
 
@@ -238,7 +238,7 @@ func TestErrorResponses(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -351,7 +351,7 @@ func TestPatchJSON(t *testing.T) {
 		gotContentType = r.Header.Get("Content-Type")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"u1","displayName":"Updated"}`))
+		_, _ = w.Write([]byte(`{"id":"u1","displayName":"Updated"}`))
 	}))
 	defer srv.Close()
 
@@ -391,7 +391,7 @@ func TestPostJSONRaw(t *testing.T) {
 		gotMethod = r.Method
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"result":"ok"}`))
+		_, _ = w.Write([]byte(`{"result":"ok"}`))
 	}))
 	defer srv.Close()
 
@@ -424,7 +424,7 @@ func TestPostJSONRawError(t *testing.T) {
 func TestGetRaw(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("raw-response-bytes"))
+		_, _ = w.Write([]byte("raw-response-bytes"))
 	}))
 	defer srv.Close()
 
@@ -444,7 +444,7 @@ func TestGetRaw(t *testing.T) {
 func TestGetRawReturnsStatusOnError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte("not found"))
+		_, _ = w.Write([]byte("not found"))
 	}))
 	defer srv.Close()
 
@@ -466,7 +466,7 @@ func TestGetJSONWithQuery(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"1"}`))
+		_, _ = w.Write([]byte(`{"id":"1"}`))
 	}))
 	defer srv.Close()
 
@@ -489,7 +489,7 @@ func TestListJSONWithQuery(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"1"},{"id":"2"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"1"},{"id":"2"}]}`))
 	}))
 	defer srv.Close()
 

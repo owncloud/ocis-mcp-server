@@ -43,7 +43,7 @@ func TestHandleListGroups(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -102,7 +102,7 @@ func TestHandleGetGroup(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -130,7 +130,7 @@ func TestHandleCreateGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":"new-g","displayName":"New Group"}`))
+		_, _ = w.Write([]byte(`{"id":"new-g","displayName":"New Group"}`))
 	}))
 	defer srv.Close()
 
@@ -274,7 +274,7 @@ func TestHandleUpdateGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"g1","displayName":"Updated"}`))
+		_, _ = w.Write([]byte(`{"id":"g1","displayName":"Updated"}`))
 	}))
 	defer srv.Close()
 

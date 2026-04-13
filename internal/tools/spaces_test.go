@@ -43,7 +43,7 @@ func TestHandleListSpaces(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -92,7 +92,7 @@ func TestHandleGetSpace(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -120,7 +120,7 @@ func TestHandleCreateSpace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":"new-s","name":"Test Space","driveType":"project"}`))
+		_, _ = w.Write([]byte(`{"id":"new-s","name":"Test Space","driveType":"project"}`))
 	}))
 	defer srv.Close()
 
@@ -142,7 +142,7 @@ func TestHandleUpdateSpace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"s1","name":"Renamed","driveType":"project"}`))
+		_, _ = w.Write([]byte(`{"id":"s1","name":"Renamed","driveType":"project"}`))
 	}))
 	defer srv.Close()
 
@@ -239,7 +239,7 @@ func TestHandleRestoreSpace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"s1","name":"Restored","driveType":"project"}`))
+		_, _ = w.Write([]byte(`{"id":"s1","name":"Restored","driveType":"project"}`))
 	}))
 	defer srv.Close()
 
@@ -258,7 +258,7 @@ func TestHandleListSpacePermissions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"p1","roles":["viewer"]}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"p1","roles":["viewer"]}]}`))
 	}))
 	defer srv.Close()
 
@@ -313,7 +313,7 @@ func TestHandleInviteToSpace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+		_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
 	}))
 	defer srv.Close()
 
@@ -334,7 +334,7 @@ func TestHandleCreateSpaceLink(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
+		_, _ = w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
 	}))
 	defer srv.Close()
 

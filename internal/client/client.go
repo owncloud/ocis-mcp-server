@@ -56,7 +56,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if attempt == maxRetries-1 {
 				return nil, &APIError{
 					StatusCode: 429,
@@ -86,7 +86,7 @@ func (c *Client) DoJSON(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, errorFromResponse(resp)
 	}
 	return resp, nil

@@ -36,7 +36,7 @@ func TestCapabilitiesHandler(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -69,7 +69,7 @@ func TestVersionHandler(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"ocs":{"data":{"version":{"major":8,"string":"8.0.1","edition":"Community"}}}}`))
+		_, _ = w.Write([]byte(`{"ocs":{"data":{"version":{"major":8,"string":"8.0.1","edition":"Community"}}}}`))
 	}))
 	defer srv.Close()
 
@@ -126,12 +126,12 @@ func TestSharingRolesHandler(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "roles") {
 			w.WriteHeader(200)
-			w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"}]}`))
+			_, _ = w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"}]}`))
 			return
 		}
 		// me/drives
 		w.WriteHeader(200)
-		w.Write([]byte(`{"value":[{"id":"d1","name":"Personal"}]}`))
+		_, _ = w.Write([]byte(`{"value":[{"id":"d1","name":"Personal"}]}`))
 	}))
 	defer srv.Close()
 

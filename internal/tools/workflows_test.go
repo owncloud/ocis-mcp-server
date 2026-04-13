@@ -28,7 +28,7 @@ func TestHandleShareWithLink(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(200)
-				w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
+				_, _ = w.Write([]byte(`{"id":"link1","link":{"type":"view","webUrl":"https://example.com/s/abc"}}`))
 			}))
 			defer srv.Close()
 
@@ -61,20 +61,20 @@ func TestHandleGetSpaceOverview(t *testing.T) {
 			// GetJSON for space
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			w.Write([]byte(`{"id":"s1","name":"Project","driveType":"project"}`))
+			_, _ = w.Write([]byte(`{"id":"s1","name":"Project","driveType":"project"}`))
 			return
 		}
 		if strings.Contains(r.URL.Path, "permissions") {
 			// ListJSON for permissions
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			w.Write([]byte(`{"value":[{"id":"p1"}]}`))
+			_, _ = w.Write([]byte(`{"value":[{"id":"p1"}]}`))
 			return
 		}
 		// PROPFIND for files
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(207)
-		w.Write([]byte(propfindResponse))
+		_, _ = w.Write([]byte(propfindResponse))
 	}))
 	defer srv.Close()
 
@@ -108,11 +108,11 @@ func TestHandleCreateProjectSpace(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "invite") {
 			w.WriteHeader(200)
-			w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+			_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
 			return
 		}
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":"new-s","name":"Created","driveType":"project"}`))
+		_, _ = w.Write([]byte(`{"id":"new-s","name":"Created","driveType":"project"}`))
 	}))
 	defer srv.Close()
 
@@ -136,7 +136,7 @@ func TestHandleCreateProjectSpaceNoMembers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":"new-s","name":"Solo","driveType":"project"}`))
+		_, _ = w.Write([]byte(`{"id":"new-s","name":"Solo","driveType":"project"}`))
 	}))
 	defer srv.Close()
 
@@ -162,13 +162,13 @@ func TestHandleUploadAndShare(t *testing.T) {
 		if r.Method == "PROPFIND" {
 			w.Header().Set("Content-Type", "application/xml")
 			w.WriteHeader(207)
-			w.Write([]byte(propfindSingleFile))
+			_, _ = w.Write([]byte(propfindSingleFile))
 			return
 		}
 		// POST invite
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+		_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
 	}))
 	defer srv.Close()
 
