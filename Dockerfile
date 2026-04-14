@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
 
 RUN apk add --no-cache ca-certificates git
 
@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/ocis-mcp-server ./cmd/ocis-mcp-server
 
 # Stage 2: Runtime
-FROM alpine:3.23
+FROM alpine:3.23@sha256:9a341ff2287c54b86425cbee0141114d811ae69d88a36019087be6d896cef241
 
 RUN apk add --no-cache ca-certificates tzdata
 

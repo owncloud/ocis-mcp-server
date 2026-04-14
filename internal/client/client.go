@@ -45,12 +45,36 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body io.Re
 	return req, nil
 }
 
+// cloneRequestForAttempt creates a fresh copy of req suitable for a retry.
+// If the request has a body, GetBody must be set (http.NewRequest does this
+// for common body types). Returns an error for non-replayable bodies.
+func cloneRequestForAttempt(req *http.Request) (*http.Request, error) {
+	attemptReq := req.Clone(req.Context())
+	if req.Body == nil {
+		return attemptReq, nil
+	}
+	if req.GetBody == nil {
+		return nil, fmt.Errorf("cannot retry request with a non-replayable body")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, fmt.Errorf("recreating request body: %w", err)
+	}
+	attemptReq.Body = body
+	return attemptReq, nil
+}
+
 // Do executes an HTTP request with rate-limit retry logic and error mapping.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	const maxRetries = 3
 
 	for attempt := range maxRetries {
-		resp, err := c.http.Do(req)
+		attemptReq, err := cloneRequestForAttempt(req)
+		if err != nil {
+			return nil, fmt.Errorf("preparing HTTP request: %w", err)
+		}
+
+		resp, err := c.http.Do(attemptReq)
 		if err != nil {
 			return nil, fmt.Errorf("HTTP request failed: %w", err)
 		}
