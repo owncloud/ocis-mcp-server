@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/ocis-mcp-server ./cmd/ocis-mcp-server
 
 # Stage 2: Runtime
-FROM alpine:3.23@sha256:9a341ff2287c54b86425cbee0141114d811ae69d88a36019087be6d896cef241
+FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
 
 RUN apk add --no-cache ca-certificates tzdata
 
