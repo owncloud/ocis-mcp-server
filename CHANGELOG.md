@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-04-13
-
 ### Added
 
 - 80 MCP tools across 13 categories: users, groups, spaces, files, shares,
@@ -26,13 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker multi-stage build (golang:1.26-alpine / alpine:3.23)
 - GoReleaser configuration for cross-platform releases (linux/darwin/windows,
   amd64/arm64)
-- GitHub Actions CI: build, test, lint, coverage threshold (70%), commit
-  signature verification
+- GitHub Actions CI: build, test, lint, coverage threshold (70%)
 - Dependabot for automated dependency updates (actions, Go modules, Docker)
 - Getting Started guide for connecting Claude Desktop and Ollama on
   Mac, Windows, and Linux
 - Interactive `install.sh` setup script with OS detection
-- 75.8% test coverage (config: 98%, client: 86%, tools: 75%)
 
-[Unreleased]: https://github.com/owncloud/ocis-mcp-server/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/owncloud/ocis-mcp-server/releases/tag/v0.1.0
+[Unreleased]: https://github.com/owncloud/ocis-mcp-server/commits/main/
