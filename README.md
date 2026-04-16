@@ -57,11 +57,32 @@ flowchart LR
 
 ### Prerequisites
 
-- Go 1.25+ (for building from source)
 - A running oCIS instance
 - An app token or OIDC access token for authentication
+- Go 1.25+ (only for building from source)
 
-### Build
+### Install from Release
+
+Download a pre-built binary from the [Releases](https://github.com/owncloud/ocis-mcp-server/releases)
+page, extract the archive, and make it executable:
+
+```bash
+# Example for macOS (Apple Silicon)
+tar xzf ocis-mcp-server_*_darwin_arm64.tar.gz
+chmod +x ocis-mcp-server
+```
+
+> **macOS users:** macOS quarantines downloaded binaries. You must remove the quarantine flag
+> before the binary can run:
+>
+> ```bash
+> xattr -d com.apple.quarantine ocis-mcp-server
+> ```
+>
+> Without this step, macOS will show *"Apple could not verify this software"* and Claude Desktop
+> will fail with *"Permission denied"*.
+
+### Build from Source
 
 ```bash
 go build -o ocis-mcp-server ./cmd/ocis-mcp-server
