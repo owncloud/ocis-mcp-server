@@ -26,19 +26,56 @@ Before we start, make sure you have:
 - [ ] A computer (Mac, Windows, or Linux)
 - [ ] An **oCIS server** running somewhere (your school or organization might have one,
       or you can [run one with Docker](https://doc.owncloud.com/ocis/next/quickstart/docker.html))
-- [ ] **Go** installed (version 1.25 or newer) -- get it from [go.dev/dl](https://go.dev/dl/)
 - [ ] Either **Claude Desktop** or **Ollama** installed (we'll cover both below)
+- [ ] **Go** installed (version 1.25 or newer) -- only needed if building from source.
+      Get it from [go.dev/dl](https://go.dev/dl/). Not needed if you download a pre-built binary.
 
 ## Step 1: Get the MCP Server Ready
 
-First, download and build the MCP server. Open your terminal (or command prompt on Windows) and run:
+You can either **download a pre-built binary** (easiest) or build from source.
+
+### Option A: Download from Releases (recommended)
+
+Go to the [Releases page](https://github.com/owncloud/ocis-mcp-server/releases) and download the
+right file for your system:
+
+| System | File to download |
+|---|---|
+| Mac (Apple Silicon / M1-M4) | `ocis-mcp-server_*_darwin_arm64.tar.gz` |
+| Mac (Intel) | `ocis-mcp-server_*_darwin_amd64.tar.gz` |
+| Windows | `ocis-mcp-server_*_windows_amd64.zip` |
+| Linux | `ocis-mcp-server_*_linux_amd64.tar.gz` |
+
+Extract it somewhere you'll remember (like your home folder).
+
+**On Mac/Linux**, open a terminal and run:
 
 ```bash
-# Download the code
+cd ~/Downloads
+tar xzf ocis-mcp-server_*.tar.gz
+chmod +x ocis-mcp-server
+mv ocis-mcp-server ~/ocis-mcp-server
+```
+
+**On Windows**, right-click the `.zip` file and select "Extract All".
+
+> **Mac users -- important!** macOS blocks downloaded programs by default. You need to run this
+> command once to allow it:
+>
+> ```bash
+> xattr -d com.apple.quarantine ~/ocis-mcp-server
+> ```
+>
+> If you skip this step you'll see *"Apple could not verify this software"* or
+> *"Permission denied"* when Claude Desktop tries to start the server.
+
+### Option B: Build from source
+
+If you have Go installed (version 1.25+), you can build it yourself:
+
+```bash
 git clone https://github.com/owncloud/ocis-mcp-server.git
 cd ocis-mcp-server
-
-# Build it
 go build -o ocis-mcp-server ./cmd/ocis-mcp-server
 ```
 
@@ -324,6 +361,16 @@ It will always **ask before changing anything** on your computer.
 ---
 
 ## Troubleshooting
+
+### "Permission denied" or "Apple could not verify" (Mac only)
+
+macOS blocks programs downloaded from the internet. Run this in Terminal:
+
+```bash
+xattr -d com.apple.quarantine /path/to/ocis-mcp-server
+```
+
+Replace `/path/to/ocis-mcp-server` with the actual location of the file.
 
 ### "Connection refused" or "cannot connect"
 
