@@ -1,6 +1,6 @@
 # Build artifacts
-ocis-mcp-server
-ocis-mcp-server.exe
+/ocis-mcp-server
+/ocis-mcp-server.exe
 bin/
 dist/
 

@@ -45,3 +45,10 @@ release:
   github:
     owner: owncloud
     name: ocis-mcp-server
+  header: |
+    ## What's Changed
+
+    See the full [CHANGELOG](https://github.com/owncloud/ocis-mcp-server/blob/main/CHANGELOG.md) for details.
+  extra_files:
+    - glob: CHANGELOG.md
+    - glob: LICENSE
