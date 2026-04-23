@@ -265,13 +265,13 @@ func TestHandleGetSharingRoles(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"},{"id":"r2","displayName":"Editor"}]}`))
+		_, _ = w.Write([]byte(`[{"id":"r1","displayName":"Viewer"},{"id":"r2","displayName":"Editor"}]`))
 	}))
 	defer srv.Close()
 
 	c := client.New(newTestConfig(srv.URL))
 	handler := handleGetSharingRoles(c)
-	_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, GetSharingRolesInput{SpaceID: "s1"})
+	_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, GetSharingRolesInput{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

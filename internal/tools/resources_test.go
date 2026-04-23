@@ -124,14 +124,9 @@ func TestAuthModeHandler(t *testing.T) {
 func TestSharingRolesHandler(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "roles") {
-			w.WriteHeader(200)
-			_, _ = w.Write([]byte(`{"value":[{"id":"r1","displayName":"Viewer"}]}`))
-			return
-		}
-		// me/drives
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"value":[{"id":"d1","name":"Personal"}]}`))
+		// roleDefinitions returns a plain JSON array, not {value:[...]}
+		_, _ = w.Write([]byte(`[{"id":"r1","displayName":"Viewer"},{"id":"r2","displayName":"Editor"}]`))
 	}))
 	defer srv.Close()
 
