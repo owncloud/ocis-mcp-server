@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
+	libregraph "github.com/owncloud/libre-graph-api-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 )
@@ -174,28 +176,37 @@ func handleCreateShare(c *client.Client) mcp.ToolHandlerFor[CreateShareInput, In
 		if err := client.ValidateID("item_id", input.ItemID); err != nil {
 			return nil, InviteOutput{}, err
 		}
-		// The LibreGraph /invite endpoint requires each recipient to carry a
-		// recipient type alongside the objectId; omitting it returns HTTP 400.
-		// The tool takes plain user IDs, so default the type to "user".
-		recipients := make([]map[string]any, len(input.Recipients))
+		// NewDriveRecipient defaults @libre.graph.recipient.type to "user"; the
+		// tool takes plain user IDs, so only the objectId needs setting.
+		recipients := make([]libregraph.DriveRecipient, len(input.Recipients))
 		for i, r := range input.Recipients {
-			recipients[i] = map[string]any{
-				"objectId":                    r,
-				"@libre.graph.recipient.type": "user",
-			}
+			rec := libregraph.NewDriveRecipient()
+			rec.SetObjectId(r)
+			recipients[i] = *rec
 		}
-		body := map[string]any{
-			"recipients": recipients,
-			"roles":      input.Roles,
-		}
+		invite := libregraph.NewDriveItemInvite()
+		invite.SetRecipients(recipients)
+		invite.SetRoles(input.Roles)
 		if input.Expiration != "" {
-			body["expirationDateTime"] = input.Expiration
+			exp, err := time.Parse(time.RFC3339, input.Expiration)
+			if err != nil {
+				return nil, InviteOutput{}, fmt.Errorf("invalid expiration (want RFC3339): %w", err)
+			}
+			invite.SetExpirationDateTime(exp)
 		}
-		result, err := client.PostJSON[InviteOutput](ctx, c, permPath(input.SpaceID, input.ItemID)+"/invite", body)
+
+		resp, _, err := c.GraphClient().DrivesPermissionsApi.
+			Invite(ctx, input.SpaceID, input.ItemID).DriveItemInvite(*invite).Execute()
+		if err != nil {
+			return nil, InviteOutput{}, sdkError(err)
+		}
+		// The /invite response envelope is {"value":[...]} — map it onto the
+		// tool's InviteOutput{Permissions} to keep the JSON contract stable.
+		perms, err := sdkConvert[[]Permission](resp.GetValue())
 		if err != nil {
 			return nil, InviteOutput{}, err
 		}
-		return nil, result, nil
+		return nil, InviteOutput{Permissions: perms}, nil
 	}
 }
 
@@ -211,18 +222,32 @@ func handleCreateLink(c *client.Client) mcp.ToolHandlerFor[CreateLinkInput, Perm
 		if linkType == "" {
 			linkType = "view"
 		}
-		body := map[string]any{"type": linkType}
+		lt, err := libregraph.NewSharingLinkTypeFromValue(linkType)
+		if err != nil {
+			return nil, Permission{}, fmt.Errorf("invalid link type %q: %w", linkType, err)
+		}
+		link := libregraph.NewDriveItemCreateLink()
+		link.SetType(*lt)
 		if input.Password != "" {
-			body["password"] = input.Password
+			link.SetPassword(input.Password)
 		}
 		if input.Expiration != "" {
-			body["expirationDateTime"] = input.Expiration
+			exp, perr := time.Parse(time.RFC3339, input.Expiration)
+			if perr != nil {
+				return nil, Permission{}, fmt.Errorf("invalid expiration (want RFC3339): %w", perr)
+			}
+			link.SetExpirationDateTime(exp)
 		}
-		perm, err := client.PostJSON[Permission](ctx, c, permPath(input.SpaceID, input.ItemID)+"/createLink", body)
+		perm, _, err := c.GraphClient().DrivesPermissionsApi.
+			CreateLink(ctx, input.SpaceID, input.ItemID).DriveItemCreateLink(*link).Execute()
+		if err != nil {
+			return nil, Permission{}, sdkError(err)
+		}
+		out, err := sdkConvert[Permission](perm)
 		if err != nil {
 			return nil, Permission{}, err
 		}
-		return nil, perm, nil
+		return nil, out, nil
 	}
 }
 
@@ -234,7 +259,12 @@ func handleListShares(c *client.Client) mcp.ToolHandlerFor[ListSharesInput, List
 		if err := client.ValidateID("item_id", input.ItemID); err != nil {
 			return nil, ListPermissionsOutput{}, err
 		}
-		perms, err := client.ListJSON[Permission](ctx, c, permPath(input.SpaceID, input.ItemID)+"/permissions", nil)
+		resp, _, err := c.GraphClient().DrivesPermissionsApi.
+			ListPermissions(ctx, input.SpaceID, input.ItemID).Execute()
+		if err != nil {
+			return nil, ListPermissionsOutput{}, sdkError(err)
+		}
+		perms, err := sdkConvert[[]Permission](resp.GetValue())
 		if err != nil {
 			return nil, ListPermissionsOutput{}, err
 		}
@@ -250,16 +280,20 @@ func handleUpdateShare(c *client.Client) mcp.ToolHandlerFor[UpdateShareInput, Pe
 		if err := client.ValidateID("permission_id", input.PermissionID); err != nil {
 			return nil, Permission{}, err
 		}
-		body := map[string]any{}
+		perm := libregraph.NewPermission()
 		if len(input.Roles) > 0 {
-			body["roles"] = input.Roles
+			perm.SetRoles(input.Roles)
 		}
-		path := fmt.Sprintf("%s/permissions/%s", permPath(input.SpaceID, input.ItemID), url.PathEscape(input.PermissionID))
-		perm, err := client.PatchJSON[Permission](ctx, c, path, body)
+		updated, _, err := c.GraphClient().DrivesPermissionsApi.
+			UpdatePermission(ctx, input.SpaceID, input.ItemID, input.PermissionID).Permission(*perm).Execute()
+		if err != nil {
+			return nil, Permission{}, sdkError(err)
+		}
+		out, err := sdkConvert[Permission](updated)
 		if err != nil {
 			return nil, Permission{}, err
 		}
-		return nil, perm, nil
+		return nil, out, nil
 	}
 }
 
@@ -271,18 +305,27 @@ func handleUpdateShareExpiration(c *client.Client) mcp.ToolHandlerFor[UpdateShar
 		if err := client.ValidateID("permission_id", input.PermissionID); err != nil {
 			return nil, Permission{}, err
 		}
-		body := map[string]any{}
+		perm := libregraph.NewPermission()
 		if input.Expiration != "" {
-			body["expirationDateTime"] = input.Expiration
+			exp, err := time.Parse(time.RFC3339, input.Expiration)
+			if err != nil {
+				return nil, Permission{}, fmt.Errorf("invalid expiration (want RFC3339): %w", err)
+			}
+			perm.SetExpirationDateTime(exp)
 		} else {
-			body["expirationDateTime"] = nil
+			// An explicit null clears the expiration.
+			perm.SetExpirationDateTimeNil()
 		}
-		path := fmt.Sprintf("%s/permissions/%s", permPath(input.SpaceID, input.ItemID), url.PathEscape(input.PermissionID))
-		perm, err := client.PatchJSON[Permission](ctx, c, path, body)
+		updated, _, err := c.GraphClient().DrivesPermissionsApi.
+			UpdatePermission(ctx, input.SpaceID, input.ItemID, input.PermissionID).Permission(*perm).Execute()
+		if err != nil {
+			return nil, Permission{}, sdkError(err)
+		}
+		out, err := sdkConvert[Permission](updated)
 		if err != nil {
 			return nil, Permission{}, err
 		}
-		return nil, perm, nil
+		return nil, out, nil
 	}
 }
 
@@ -297,9 +340,10 @@ func handleDeleteShare(c *client.Client) mcp.ToolHandlerFor[DeleteShareInput, De
 		if err := client.ValidateID("permission_id", input.PermissionID); err != nil {
 			return nil, DeleteOutput{}, err
 		}
-		path := fmt.Sprintf("%s/permissions/%s", permPath(input.SpaceID, input.ItemID), url.PathEscape(input.PermissionID))
-		if err := client.Delete(ctx, c, path); err != nil {
-			return nil, DeleteOutput{}, err
+		_, err := c.GraphClient().DrivesPermissionsApi.
+			DeletePermission(ctx, input.SpaceID, input.ItemID, input.PermissionID).Execute()
+		if err != nil {
+			return nil, DeleteOutput{}, sdkError(err)
 		}
 		return nil, DeleteOutput{Success: true, Message: "share removed"}, nil
 	}
@@ -307,7 +351,11 @@ func handleDeleteShare(c *client.Client) mcp.ToolHandlerFor[DeleteShareInput, De
 
 func handleListSharedByMe(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInput, SharedItemsOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input ListSharedByMeInput) (*mcp.CallToolResult, SharedItemsOutput, error) {
-		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1beta1/me/drive/sharedByMe", nil)
+		resp, _, err := c.GraphClient().MeDriveApi.ListSharedByMe(ctx).Execute()
+		if err != nil {
+			return nil, SharedItemsOutput{}, sdkError(err)
+		}
+		items, err := sdkConvert[[]SharedItem](resp.GetValue())
 		if err != nil {
 			return nil, SharedItemsOutput{}, err
 		}
@@ -317,7 +365,11 @@ func handleListSharedByMe(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInp
 
 func handleListReceivedShares(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInput, SharedItemsOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input ListSharedByMeInput) (*mcp.CallToolResult, SharedItemsOutput, error) {
-		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1beta1/me/drive/sharedWithMe", nil)
+		resp, _, err := c.GraphClient().MeDriveApi.ListSharedWithMe(ctx).Execute()
+		if err != nil {
+			return nil, SharedItemsOutput{}, sdkError(err)
+		}
+		items, err := sdkConvert[[]SharedItem](resp.GetValue())
 		if err != nil {
 			return nil, SharedItemsOutput{}, err
 		}
@@ -353,9 +405,10 @@ func handleRejectShare(c *client.Client) mcp.ToolHandlerFor[DeleteShareInput, De
 		if err := client.ValidateID("permission_id", input.PermissionID); err != nil {
 			return nil, DeleteOutput{}, err
 		}
-		path := fmt.Sprintf("%s/permissions/%s", permPath(input.SpaceID, input.ItemID), url.PathEscape(input.PermissionID))
-		if err := client.Delete(ctx, c, path); err != nil {
-			return nil, DeleteOutput{}, err
+		_, err := c.GraphClient().DrivesPermissionsApi.
+			DeletePermission(ctx, input.SpaceID, input.ItemID, input.PermissionID).Execute()
+		if err != nil {
+			return nil, DeleteOutput{}, sdkError(err)
 		}
 		return nil, DeleteOutput{Success: true, Message: "share rejected"}, nil
 	}

@@ -2,7 +2,10 @@ module github.com/owncloud/ocis-mcp-server
 
 go 1.26.2
 
-require github.com/modelcontextprotocol/go-sdk v1.6.1
+require (
+	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/owncloud/libre-graph-api-go v1.0.5-0.20260528080633-1156304e59ee
+)
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
