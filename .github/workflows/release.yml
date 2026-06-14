@@ -39,13 +39,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # The `secrets` context is not available in job-level `if:` conditions, so the
+  # presence of the Apple signing secrets is checked here (where secrets ARE
+  # available, inside a step) and exposed as an output that sign-macos gates on.
+  check-signing:
+    name: Check signing secrets
+    needs: release
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check for Apple signing secrets
+        id: check
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE_P12" ] && [ -n "$APPLE_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Apple signing secrets not configured; skipping macOS sign & notarize."
+          fi
+
   sign-macos:
     name: Sign & Notarize macOS
-    needs: release
+    needs: [release, check-signing]
     runs-on: macos-latest
-    if: >-
-      secrets.APPLE_CERTIFICATE_P12 != '' &&
-      secrets.APPLE_ID != ''
+    if: needs.check-signing.outputs.enabled == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
