@@ -174,9 +174,15 @@ func handleCreateShare(c *client.Client) mcp.ToolHandlerFor[CreateShareInput, In
 		if err := client.ValidateID("item_id", input.ItemID); err != nil {
 			return nil, InviteOutput{}, err
 		}
+		// The LibreGraph /invite endpoint requires each recipient to carry a
+		// recipient type alongside the objectId; omitting it returns HTTP 400.
+		// The tool takes plain user IDs, so default the type to "user".
 		recipients := make([]map[string]any, len(input.Recipients))
 		for i, r := range input.Recipients {
-			recipients[i] = map[string]any{"objectId": r}
+			recipients[i] = map[string]any{
+				"objectId":                    r,
+				"@libre.graph.recipient.type": "user",
+			}
 		}
 		body := map[string]any{
 			"recipients": recipients,
