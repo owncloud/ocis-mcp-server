@@ -115,7 +115,13 @@ func handleAssignRole(c *client.Client) mcp.ToolHandlerFor[AssignRoleInput, Assi
 
 func handleListAssignments(c *client.Client) mcp.ToolHandlerFor[ListAssignmentsInput, ListAssignmentsOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, _ ListAssignmentsInput) (*mcp.CallToolResult, ListAssignmentsOutput, error) {
-		resp, err := client.PostJSON[SettingsAssignmentsResponse](ctx, c, "/api/v0/settings/assignments-list", map[string]any{})
+		// The assignments-list endpoint requires the target account_uuid;
+		// without it oCIS returns HTTP 400. Default to the authenticated user.
+		me, err := client.GetJSON[User](ctx, c, "/graph/v1.0/me", nil)
+		if err != nil {
+			return nil, ListAssignmentsOutput{}, err
+		}
+		resp, err := client.PostJSON[SettingsAssignmentsResponse](ctx, c, "/api/v0/settings/assignments-list", map[string]any{"account_uuid": me.ID})
 		if err != nil {
 			return nil, ListAssignmentsOutput{}, err
 		}

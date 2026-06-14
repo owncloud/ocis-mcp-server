@@ -459,7 +459,16 @@ func handleGetResourceByID(c *client.Client) mcp.ToolHandlerFor[GetResourceByIDI
 		if err := client.ValidateID("resource_id", input.ResourceID); err != nil {
 			return nil, GetFileInfoOutput{}, err
 		}
-		path := fmt.Sprintf("/dav/spaces/%s/%s", url.PathEscape(input.SpaceID), url.PathEscape(input.ResourceID))
+		// A full resource ID already encodes its space
+		// (storageid$spaceid!itemid) and addresses the dav-by-id endpoint
+		// directly — this is what get_file_info returns as FileID. Only join
+		// the space path when given a bare item ID.
+		var path string
+		if strings.ContainsAny(input.ResourceID, "$!") {
+			path = "/dav/spaces/" + url.PathEscape(input.ResourceID)
+		} else {
+			path = "/dav/spaces/" + url.PathEscape(input.SpaceID) + "!" + url.PathEscape(input.ResourceID)
+		}
 		ms, err := client.Propfind(ctx, c, path, "0")
 		if err != nil {
 			return nil, GetFileInfoOutput{}, err

@@ -402,10 +402,14 @@ func handleInviteToSpace(c *client.Client) mcp.ToolHandlerFor[InviteToSpaceInput
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, InviteOutput{}, err
 		}
+		// oCIS validates DriveItemInvite recipients and requires the
+		// @libre.graph.recipient.type alongside the objectId; omitting it
+		// returns HTTP 400. The tool takes plain IDs, so default to "user".
 		recipients := make([]map[string]any, len(input.Recipients))
 		for i, r := range input.Recipients {
 			recipients[i] = map[string]any{
-				"objectId": r,
+				"objectId":                    r,
+				"@libre.graph.recipient.type": "user",
 			}
 		}
 		body := map[string]any{

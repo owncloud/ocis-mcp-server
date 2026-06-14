@@ -223,8 +223,11 @@ func handleAddGroupMember(c *client.Client) mcp.ToolHandlerFor[AddGroupMemberInp
 		if err := client.ValidateID("user_id", input.UserID); err != nil {
 			return nil, DeleteOutput{}, err
 		}
+		// The Graph $ref endpoint expects @odata.id to be a full URL pointing
+		// at the user resource, not a bare ID; oCIS otherwise returns HTTP 400
+		// "Error parsing @odata.id url".
 		body := map[string]string{
-			"@odata.id": input.UserID,
+			"@odata.id": c.BaseURL() + "/graph/v1.0/users/" + url.PathEscape(input.UserID),
 		}
 		_, err := client.PostJSONRaw(ctx, c, "/graph/v1.0/groups/"+url.PathEscape(input.GroupID)+"/members/$ref", body)
 		if err != nil {
