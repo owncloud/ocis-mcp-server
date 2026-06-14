@@ -148,7 +148,7 @@ func handleUploadAndShare(c *client.Client) mcp.ToolHandlerFor[UploadAndShareInp
 			"recipients": recipients,
 			"roles":      input.Roles,
 		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/items/%s/invite", input.SpaceID, fi.FileID)
+		path := fmt.Sprintf("/graph/v1beta1/drives/%s/items/%s/invite", input.SpaceID, fi.FileID)
 		result, err := client.PostJSON[InviteOutput](ctx, c, path, body)
 		if err != nil {
 			return nil, UploadAndShareOutput{FileUploaded: true}, fmt.Errorf("file uploaded but sharing failed: %w", err)
@@ -195,7 +195,7 @@ func handleCreateProjectSpace(c *client.Client) mcp.ToolHandlerFor[CreateProject
 				"recipients": recipients,
 				"roles":      input.MemberRoles,
 			}
-			path := fmt.Sprintf("/graph/v1.0/drives/%s/root/invite", drive.ID)
+			path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/invite", drive.ID)
 			result, err := client.PostJSON[InviteOutput](ctx, c, path, inviteBody)
 			if err != nil {
 				out.Message = fmt.Sprintf("space created but inviting members failed: %v", err)
@@ -265,7 +265,7 @@ func handleShareWithLink(c *client.Client) mcp.ToolHandlerFor[ShareWithLinkInput
 			linkType = "view"
 		}
 		body := map[string]any{"type": linkType}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/items/%s/createLink", input.SpaceID, input.ItemID)
+		path := fmt.Sprintf("/graph/v1beta1/drives/%s/items/%s/createLink", input.SpaceID, input.ItemID)
 		perm, err := client.PostJSON[Permission](ctx, c, path, body)
 		if err != nil {
 			return nil, ShareWithLinkOutput{}, err
@@ -309,7 +309,7 @@ func handleGetSpaceOverview(c *client.Client) mcp.ToolHandlerFor[GetSpaceOvervie
 		}
 
 		// Step 3: List permissions
-		permPath := fmt.Sprintf("/graph/v1.0/drives/%s/root/permissions", input.SpaceID)
+		permPath := fmt.Sprintf("/graph/v1beta1/drives/%s/root/permissions", input.SpaceID)
 		perms, err := client.ListJSON[Permission](ctx, c, permPath, nil)
 		if err == nil {
 			out.Permissions = perms

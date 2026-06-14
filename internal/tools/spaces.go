@@ -412,7 +412,7 @@ func handleInviteToSpace(c *client.Client) mcp.ToolHandlerFor[InviteToSpaceInput
 			"recipients": recipients,
 			"roles":      input.Roles,
 		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/root/invite", url.PathEscape(input.SpaceID))
+		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/invite", url.PathEscape(input.SpaceID))
 		result, err := client.PostJSON[InviteOutput](ctx, c, path, body)
 		if err != nil {
 			return nil, InviteOutput{}, err
@@ -436,7 +436,7 @@ func handleCreateSpaceLink(c *client.Client) mcp.ToolHandlerFor[CreateSpaceLinkI
 		if input.Password != "" {
 			body["password"] = input.Password
 		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/root/createLink", url.PathEscape(input.SpaceID))
+		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/createLink", url.PathEscape(input.SpaceID))
 		perm, err := client.PostJSON[Permission](ctx, c, path, body)
 		if err != nil {
 			return nil, Permission{}, err
@@ -450,7 +450,7 @@ func handleListSpacePermissions(c *client.Client) mcp.ToolHandlerFor[ListSpacePe
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, ListPermissionsOutput{}, err
 		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/root/permissions", url.PathEscape(input.SpaceID))
+		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/permissions", url.PathEscape(input.SpaceID))
 		perms, err := client.ListJSON[Permission](ctx, c, path, nil)
 		if err != nil {
 			return nil, ListPermissionsOutput{}, err
