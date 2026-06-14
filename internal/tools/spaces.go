@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
+	libregraph "github.com/owncloud/libre-graph-api-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 )
@@ -297,31 +298,39 @@ func handleGetSpace(c *client.Client) mcp.ToolHandlerFor[GetSpaceInput, GetSpace
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, GetSpaceOutput{}, err
 		}
-		drive, err := client.GetJSON[Drive](ctx, c, "/graph/v1.0/drives/"+url.PathEscape(input.SpaceID), nil)
+		drive, _, err := c.GraphClient().DrivesApi.GetDrive(ctx, input.SpaceID).Execute()
+		if err != nil {
+			return nil, GetSpaceOutput{}, sdkError(err)
+		}
+		out, err := sdkConvert[Drive](drive)
 		if err != nil {
 			return nil, GetSpaceOutput{}, err
 		}
-		return nil, GetSpaceOutput{Drive: drive}, nil
+		return nil, GetSpaceOutput{Drive: out}, nil
 	}
 }
 
 func handleCreateSpace(c *client.Client) mcp.ToolHandlerFor[CreateSpaceInput, GetSpaceOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input CreateSpaceInput) (*mcp.CallToolResult, GetSpaceOutput, error) {
-		body := map[string]any{
-			"name":      input.Name,
-			"driveType": "project",
-		}
+		drive := libregraph.NewDrive(input.Name)
+		drive.SetDriveType("project")
 		if input.Description != "" {
-			body["description"] = input.Description
+			drive.SetDescription(input.Description)
 		}
 		if input.Quota > 0 {
-			body["quota"] = map[string]int64{"total": input.Quota}
+			q := libregraph.NewQuota()
+			q.SetTotal(input.Quota)
+			drive.SetQuota(*q)
 		}
-		drive, err := client.PostJSON[Drive](ctx, c, "/graph/v1.0/drives", body)
+		created, _, err := c.GraphClient().DrivesApi.CreateDrive(ctx).Drive(*drive).Execute()
+		if err != nil {
+			return nil, GetSpaceOutput{}, sdkError(err)
+		}
+		out, err := sdkConvert[Drive](created)
 		if err != nil {
 			return nil, GetSpaceOutput{}, err
 		}
-		return nil, GetSpaceOutput{Drive: drive}, nil
+		return nil, GetSpaceOutput{Drive: out}, nil
 	}
 }
 
@@ -330,21 +339,27 @@ func handleUpdateSpace(c *client.Client) mcp.ToolHandlerFor[UpdateSpaceInput, Ge
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, GetSpaceOutput{}, err
 		}
-		body := make(map[string]any)
+		update := libregraph.NewDriveUpdate()
 		if input.Name != nil {
-			body["name"] = *input.Name
+			update.SetName(*input.Name)
 		}
 		if input.Description != nil {
-			body["description"] = *input.Description
+			update.SetDescription(*input.Description)
 		}
 		if input.Quota != nil {
-			body["quota"] = map[string]int64{"total": *input.Quota}
+			q := libregraph.NewQuota()
+			q.SetTotal(*input.Quota)
+			update.SetQuota(*q)
 		}
-		drive, err := client.PatchJSON[Drive](ctx, c, "/graph/v1.0/drives/"+url.PathEscape(input.SpaceID), body)
+		drive, _, err := c.GraphClient().DrivesApi.UpdateDrive(ctx, input.SpaceID).DriveUpdate(*update).Execute()
+		if err != nil {
+			return nil, GetSpaceOutput{}, sdkError(err)
+		}
+		out, err := sdkConvert[Drive](drive)
 		if err != nil {
 			return nil, GetSpaceOutput{}, err
 		}
-		return nil, GetSpaceOutput{Drive: drive}, nil
+		return nil, GetSpaceOutput{Drive: out}, nil
 	}
 }
 
@@ -356,8 +371,8 @@ func handleDisableSpace(c *client.Client) mcp.ToolHandlerFor[DisableSpaceInput, 
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, DeleteOutput{}, err
 		}
-		if err := client.Delete(ctx, c, "/graph/v1.0/drives/"+url.PathEscape(input.SpaceID)); err != nil {
-			return nil, DeleteOutput{}, err
+		if _, err := c.GraphClient().DrivesApi.DeleteDrive(ctx, input.SpaceID).Execute(); err != nil {
+			return nil, DeleteOutput{}, sdkError(err)
 		}
 		return nil, DeleteOutput{Success: true, Message: "space disabled"}, nil
 	}
@@ -402,26 +417,24 @@ func handleInviteToSpace(c *client.Client) mcp.ToolHandlerFor[InviteToSpaceInput
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, InviteOutput{}, err
 		}
-		// oCIS validates DriveItemInvite recipients and requires the
-		// @libre.graph.recipient.type alongside the objectId; omitting it
-		// returns HTTP 400. The tool takes plain IDs, so default to "user".
-		recipients := make([]map[string]any, len(input.Recipients))
+		recipients := make([]libregraph.DriveRecipient, len(input.Recipients))
 		for i, r := range input.Recipients {
-			recipients[i] = map[string]any{
-				"objectId":                    r,
-				"@libre.graph.recipient.type": "user",
-			}
+			rec := libregraph.NewDriveRecipient() // defaults @libre.graph.recipient.type to "user"
+			rec.SetObjectId(r)
+			recipients[i] = *rec
 		}
-		body := map[string]any{
-			"recipients": recipients,
-			"roles":      input.Roles,
+		invite := libregraph.NewDriveItemInvite()
+		invite.SetRecipients(recipients)
+		invite.SetRoles(input.Roles)
+		resp, _, err := c.GraphClient().DrivesRootApi.InviteSpaceRoot(ctx, input.SpaceID).DriveItemInvite(*invite).Execute()
+		if err != nil {
+			return nil, InviteOutput{}, sdkError(err)
 		}
-		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/invite", url.PathEscape(input.SpaceID))
-		result, err := client.PostJSON[InviteOutput](ctx, c, path, body)
+		perms, err := sdkConvert[[]Permission](resp.GetValue())
 		if err != nil {
 			return nil, InviteOutput{}, err
 		}
-		return nil, result, nil
+		return nil, InviteOutput{Permissions: perms}, nil
 	}
 }
 
@@ -434,18 +447,24 @@ func handleCreateSpaceLink(c *client.Client) mcp.ToolHandlerFor[CreateSpaceLinkI
 		if linkType == "" {
 			linkType = "view"
 		}
-		body := map[string]any{
-			"type": linkType,
+		lt, err := libregraph.NewSharingLinkTypeFromValue(linkType)
+		if err != nil {
+			return nil, Permission{}, fmt.Errorf("invalid link type %q: %w", linkType, err)
 		}
+		link := libregraph.NewDriveItemCreateLink()
+		link.SetType(*lt)
 		if input.Password != "" {
-			body["password"] = input.Password
+			link.SetPassword(input.Password)
 		}
-		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/createLink", url.PathEscape(input.SpaceID))
-		perm, err := client.PostJSON[Permission](ctx, c, path, body)
+		perm, _, err := c.GraphClient().DrivesRootApi.CreateLinkSpaceRoot(ctx, input.SpaceID).DriveItemCreateLink(*link).Execute()
+		if err != nil {
+			return nil, Permission{}, sdkError(err)
+		}
+		out, err := sdkConvert[Permission](perm)
 		if err != nil {
 			return nil, Permission{}, err
 		}
-		return nil, perm, nil
+		return nil, out, nil
 	}
 }
 
@@ -454,8 +473,11 @@ func handleListSpacePermissions(c *client.Client) mcp.ToolHandlerFor[ListSpacePe
 		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
 			return nil, ListPermissionsOutput{}, err
 		}
-		path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/permissions", url.PathEscape(input.SpaceID))
-		perms, err := client.ListJSON[Permission](ctx, c, path, nil)
+		resp, _, err := c.GraphClient().DrivesRootApi.ListPermissionsSpaceRoot(ctx, input.SpaceID).Execute()
+		if err != nil {
+			return nil, ListPermissionsOutput{}, sdkError(err)
+		}
+		perms, err := sdkConvert[[]Permission](resp.GetValue())
 		if err != nil {
 			return nil, ListPermissionsOutput{}, err
 		}
