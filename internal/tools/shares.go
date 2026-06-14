@@ -82,7 +82,7 @@ type AcceptShareInput struct {
 }
 
 type GetSharingRolesInput struct {
-	SpaceID string `json:"space_id" jsonschema:"Drive/space ID,required"`
+	// No required fields — role definitions are global, not per-space.
 }
 
 type SharingRolesOutput struct {
@@ -154,7 +154,7 @@ func registerShares(s *mcp.Server, c *client.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "ocis_get_sharing_roles",
-		Description: "Get available sharing roles for a drive/space.",
+		Description: "Get all available sharing role definitions (Viewer, Editor, Manager, etc.) and their IDs. Use these role IDs when creating shares or inviting users to spaces.",
 		Annotations: readOnlyAnnotations(),
 	}, handleGetSharingRoles(c))
 }
@@ -162,7 +162,7 @@ func registerShares(s *mcp.Server, c *client.Client) {
 // --- Handlers ---
 
 func permPath(spaceID, itemID string) string {
-	return fmt.Sprintf("/graph/v1.0/drives/%s/items/%s",
+	return fmt.Sprintf("/graph/v1beta1/drives/%s/items/%s",
 		url.PathEscape(spaceID), url.PathEscape(itemID))
 }
 
@@ -301,7 +301,7 @@ func handleDeleteShare(c *client.Client) mcp.ToolHandlerFor[DeleteShareInput, De
 
 func handleListSharedByMe(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInput, SharedItemsOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input ListSharedByMeInput) (*mcp.CallToolResult, SharedItemsOutput, error) {
-		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1.0/me/drive/sharedByMe", nil)
+		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1beta1/me/drive/sharedByMe", nil)
 		if err != nil {
 			return nil, SharedItemsOutput{}, err
 		}
@@ -311,7 +311,7 @@ func handleListSharedByMe(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInp
 
 func handleListReceivedShares(c *client.Client) mcp.ToolHandlerFor[ListSharedByMeInput, SharedItemsOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input ListSharedByMeInput) (*mcp.CallToolResult, SharedItemsOutput, error) {
-		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1.0/me/drive/sharedWithMe", nil)
+		items, err := client.ListJSON[SharedItem](ctx, c, "/graph/v1beta1/me/drive/sharedWithMe", nil)
 		if err != nil {
 			return nil, SharedItemsOutput{}, err
 		}
@@ -356,12 +356,8 @@ func handleRejectShare(c *client.Client) mcp.ToolHandlerFor[DeleteShareInput, De
 }
 
 func handleGetSharingRoles(c *client.Client) mcp.ToolHandlerFor[GetSharingRolesInput, SharingRolesOutput] {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input GetSharingRolesInput) (*mcp.CallToolResult, SharingRolesOutput, error) {
-		if err := client.ValidateID("space_id", input.SpaceID); err != nil {
-			return nil, SharingRolesOutput{}, err
-		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/root/permissions/roles", url.PathEscape(input.SpaceID))
-		roles, err := client.ListJSON[SharingRole](ctx, c, path, nil)
+	return func(ctx context.Context, req *mcp.CallToolRequest, _ GetSharingRolesInput) (*mcp.CallToolResult, SharingRolesOutput, error) {
+		roles, err := client.GetJSON[[]SharingRole](ctx, c, "/graph/v1beta1/roleManagement/permissions/roleDefinitions", nil)
 		if err != nil {
 			return nil, SharingRolesOutput{}, err
 		}

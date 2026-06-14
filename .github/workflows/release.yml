@@ -38,3 +38,148 @@ jobs:
         run: goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sign-macos:
+    name: Sign & Notarize macOS
+    needs: release
+    runs-on: macos-latest
+    if: >-
+      secrets.APPLE_CERTIFICATE_P12 != '' &&
+      secrets.APPLE_ID != ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Import Apple certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+
+          rm -f "$CERT_PATH"
+
+          # Store keychain path for cleanup
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Download macOS archives
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          mkdir -p artifacts
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "*darwin*.tar.gz" \
+            --dir artifacts/
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "checksums.txt" \
+            --dir artifacts/
+          echo "Downloaded archives:"
+          ls -la artifacts/
+
+      - name: Sign and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          # Find the signing identity
+          IDENTITY=$(security find-identity -v -p codesigning \
+            | grep "Developer ID Application" \
+            | head -1 \
+            | sed 's/.*"\(.*\)".*/\1/')
+          echo "Signing with identity: $IDENTITY"
+
+          for archive in artifacts/*darwin*.tar.gz; do
+            echo ""
+            echo "=== Processing $(basename "$archive") ==="
+
+            WORK_DIR="$(mktemp -d)"
+            tar xzf "$archive" -C "$WORK_DIR"
+
+            BINARY="$WORK_DIR/ocis-mcp-server"
+
+            # Codesign with hardened runtime + entitlements
+            codesign --force --options runtime \
+              --sign "$IDENTITY" \
+              --entitlements .github/entitlements.plist \
+              --timestamp \
+              "$BINARY"
+            codesign --verify --verbose "$BINARY"
+            echo "Signed successfully."
+
+            # Create zip for notarization (notarytool requires zip/dmg/pkg)
+            NOTARIZE_ZIP="$WORK_DIR/notarize.zip"
+            ditto -c -k "$BINARY" "$NOTARIZE_ZIP"
+
+            # Submit for notarization and wait
+            echo "Submitting for notarization..."
+            xcrun notarytool submit "$NOTARIZE_ZIP" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --wait --timeout 15m
+
+            echo "Notarization complete."
+
+            # Re-package: preserve all files from the original archive
+            BASENAME="$(basename "$archive")"
+            tar czf "artifacts/$BASENAME" -C "$WORK_DIR" \
+              $(tar tzf "$archive" | head -20)
+
+            rm -rf "$WORK_DIR"
+          done
+
+      - name: Update checksums
+        run: |
+          cd artifacts
+          for archive in *darwin*.tar.gz; do
+            # Remove old checksum line for this file
+            sed -i '' "/$archive/d" checksums.txt
+            # Add new checksum for signed archive
+            shasum -a 256 "$archive" >> checksums.txt
+          done
+          # Sort for consistency
+          sort -k2 checksums.txt -o checksums.txt
+          echo "Updated checksums:"
+          cat checksums.txt
+
+      - name: Upload signed archives and checksums
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          for archive in artifacts/*darwin*.tar.gz; do
+            echo "Uploading $(basename "$archive")..."
+            gh release upload "$TAG" "$archive" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          done
+          echo "Uploading checksums.txt..."
+          gh release upload "$TAG" artifacts/checksums.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
