@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
@@ -100,6 +101,18 @@ func toSearchResults(ms *client.MultiStatus) []SearchResult {
 	return results
 }
 
+// wrapSearchPattern makes plain-text patterns match substrings. The oCIS search
+// backend treats <oc:pattern> as a glob, so a bare word like "elmo" never matches
+// "burning_elmo.gif" — only an explicit glob such as "*.gif" works. Wrap patterns
+// that contain no wildcard in *...* to get the substring behaviour the web UI
+// provides; patterns that already use "*" or "?" are passed through unchanged.
+func wrapSearchPattern(pattern string) string {
+	if strings.ContainsAny(pattern, "*?") {
+		return pattern
+	}
+	return "*" + pattern + "*"
+}
+
 func handleSearch(c *client.Client) mcp.ToolHandlerFor[SearchInput, SearchOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
 		if err := client.ValidateID("pattern", input.Pattern); err != nil {
@@ -107,7 +120,7 @@ func handleSearch(c *client.Client) mcp.ToolHandlerFor[SearchInput, SearchOutput
 		}
 		limit := client.ValidateLimit(input.Limit)
 
-		ms, err := client.SearchReport(ctx, c, searchPath(input.SpaceID), input.Pattern, limit, input.Offset)
+		ms, err := client.SearchReport(ctx, c, searchPath(input.SpaceID), wrapSearchPattern(input.Pattern), limit, input.Offset)
 		if err != nil {
 			return nil, SearchOutput{}, err
 		}
