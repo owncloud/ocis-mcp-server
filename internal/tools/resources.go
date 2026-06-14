@@ -108,15 +108,7 @@ func versionHandler(c *client.Client) mcp.ResourceHandler {
 
 func sharingRolesHandler(c *client.Client) mcp.ResourceHandler {
 	return func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		drives, err := client.ListJSON[Drive](ctx, c, "/graph/v1.0/me/drives", nil)
-		if err != nil {
-			return nil, fmt.Errorf("listing drives for roles: %w", err)
-		}
-		if len(drives) == 0 {
-			return textResource(req.Params.URI, "[]"), nil
-		}
-		path := fmt.Sprintf("/graph/v1.0/drives/%s/root/permissions/roles", drives[0].ID)
-		roles, err := client.ListJSON[SharingRole](ctx, c, path, nil)
+		roles, err := client.GetJSON[[]SharingRole](ctx, c, "/graph/v1beta1/roleManagement/permissions/roleDefinitions", nil)
 		if err != nil {
 			return nil, fmt.Errorf("fetching sharing roles: %w", err)
 		}
