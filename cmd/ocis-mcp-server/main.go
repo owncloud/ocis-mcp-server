@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 	"github.com/owncloud/ocis-mcp-server/internal/config"
+	"github.com/owncloud/ocis-mcp-server/internal/middleware"
 	"github.com/owncloud/ocis-mcp-server/internal/tools"
 )
 
@@ -74,12 +75,14 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 		nil,
 	)
 
+	// Authenticate every /mcp request with a bearer token (no-op when no secret is set;
+	// config validation forbids that on a non-loopback bind), then add security headers.
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", securityHeaders(handler))
+	mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(cfg.HTTPSecret)(handler)))
 
 	addr := cfg.HTTPAddr
-	if strings.HasPrefix(addr, "0.0.0.0") {
-		slog.Warn("HTTP server bound to all interfaces — ensure this is intentional",
+	if !cfg.IsLoopbackBind() {
+		slog.Warn("HTTP server bound to a non-loopback interface — ensure this is intentional and network-restricted",
 			"addr", addr)
 	}
 
@@ -88,7 +91,11 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 		slog.Error("failed to listen", "addr", addr, "error", err)
 		os.Exit(1)
 	}
-	slog.Info("HTTP transport listening", "addr", addr)
+	slog.Info("HTTP transport listening", "addr", addr, "authenticated", cfg.HTTPAuthEnabled())
+	if !cfg.HTTPAuthEnabled() {
+		slog.Warn("HTTP transport is UNAUTHENTICATED (OCIS_MCP_HTTP_SECRET not set): any client that can reach this address can invoke every tool with the server's oCIS credentials. Set OCIS_MCP_HTTP_SECRET to require an 'Authorization: Bearer' token.",
+			"addr", addr)
+	}
 
 	srv := &http.Server{Handler: mux}
 	go func() {
@@ -101,14 +108,6 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 		slog.Error("HTTP server error", "error", err)
 		os.Exit(1)
 	}
-}
-
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		next.ServeHTTP(w, r)
-	})
 }
 
 func initLogger(level string) {

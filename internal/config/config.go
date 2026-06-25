@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,6 +37,11 @@ type Config struct {
 	Transport string // OCIS_MCP_TRANSPORT ("stdio" | "http", default: "stdio")
 	HTTPAddr  string // OCIS_MCP_HTTP_ADDR (default: "127.0.0.1:8090")
 
+	// HTTPSecret is the shared secret required as `Authorization: Bearer <secret>` on the
+	// HTTP transport's /mcp endpoint. When empty, the endpoint is unauthenticated and may
+	// only be bound to a loopback address (enforced in validate).
+	HTTPSecret string // OCIS_MCP_HTTP_SECRET
+
 	// Logging
 	LogLevel string // OCIS_MCP_LOG_LEVEL (default: "info")
 
@@ -59,6 +65,7 @@ func Load() (*Config, error) {
 		EducationAccessToken: os.Getenv("OCIS_MCP_EDUCATION_ACCESS_TOKEN"),
 		Transport:            os.Getenv("OCIS_MCP_TRANSPORT"),
 		HTTPAddr:             os.Getenv("OCIS_MCP_HTTP_ADDR"),
+		HTTPSecret:           os.Getenv("OCIS_MCP_HTTP_SECRET"),
 		LogLevel:             os.Getenv("OCIS_MCP_LOG_LEVEL"),
 		Insecure:             envBool("OCIS_MCP_INSECURE"),
 		TLSSkipVerify:        envBool("OCIS_MCP_TLS_SKIP_VERIFY"),
@@ -116,6 +123,16 @@ func (c *Config) validate() error {
 		return fmt.Errorf("OCIS_MCP_TRANSPORT must be 'stdio' or 'http', got %q", c.Transport)
 	}
 
+	// The HTTP transport invokes oCIS tools with the server's configured (often admin)
+	// credential. Without an authentication secret, anyone who can reach the listener can
+	// drive every tool. Refuse to start on a non-loopback bind unless a secret is set.
+	if c.Transport == "http" && c.HTTPSecret == "" && !isLoopbackHost(c.HTTPAddr) {
+		return fmt.Errorf(
+			"OCIS_MCP_TRANSPORT=http is bound to non-loopback address %q with no authentication: "+
+				"set OCIS_MCP_HTTP_SECRET to require an 'Authorization: Bearer' token, or bind to a "+
+				"loopback address (see README > Securing the HTTP transport)", c.HTTPAddr)
+	}
+
 	// Reject ambiguous auth: both app-token and OIDC set without explicit mode
 	hasAppToken := c.AppTokenUser != "" && c.AppTokenValue != ""
 	hasOIDC := c.OidcAccessToken != ""
@@ -154,6 +171,37 @@ func (c *Config) NewHTTPClient() *http.Client {
 // OcisBaseURL returns the base URL with trailing slash stripped.
 func (c *Config) OcisBaseURL() string {
 	return strings.TrimRight(c.OcisURL, "/")
+}
+
+// HTTPAuthEnabled reports whether the HTTP transport requires a bearer token.
+func (c *Config) HTTPAuthEnabled() bool {
+	return c.HTTPSecret != ""
+}
+
+// IsLoopbackBind reports whether HTTPAddr binds only the loopback interface.
+func (c *Config) IsLoopbackBind() bool {
+	return isLoopbackHost(c.HTTPAddr)
+}
+
+// isLoopbackHost reports whether a "host:port" (or bare host) listen address binds only
+// the loopback interface. A bare port (e.g. ":8090") or an unresolved hostname is treated
+// as non-loopback (fail safe).
+func isLoopbackHost(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	switch host {
+	case "":
+		return false
+	case "localhost":
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 func envBool(key string) bool {
