@@ -94,7 +94,28 @@ export OCIS_MCP_OIDC_ACCESS_TOKEN="<access-token>"
 | `OCIS_MCP_OCIS_URL` | Yes | Base URL of the oCIS instance |
 | `OCIS_MCP_TRANSPORT` | No | `stdio` (default) or `http` |
 | `OCIS_MCP_HTTP_ADDR` | No | Listen address for HTTP transport (default `127.0.0.1:8090`) |
+| `OCIS_MCP_HTTP_SECRET` | No* | Shared secret required as `Authorization: Bearer <secret>` on `/mcp`. *Required when the HTTP transport binds a non-loopback address. |
 | `OCIS_MCP_LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` |
+
+### Securing the HTTP transport
+
+The HTTP transport runs every tool with the server's configured oCIS credential (often an
+admin app token). The `/mcp` endpoint therefore controls the full tool inventory, so it must
+not be reachable by untrusted callers.
+
+- **Authenticate callers.** Set `OCIS_MCP_HTTP_SECRET` to a long random value. The server then
+  requires `Authorization: Bearer <secret>` on every `/mcp` request and rejects others with
+  `401`. Configure your MCP client to send that header.
+- **Non-loopback binds require a secret.** When `OCIS_MCP_TRANSPORT=http` binds a non-loopback
+  address (for example `0.0.0.0:8090`, a routable IP, or a bare `:8090`) and no
+  `OCIS_MCP_HTTP_SECRET` is set, the server refuses to start. Binding the default
+  `127.0.0.1:8090` without a secret is allowed but logs a warning, because any local process
+  could otherwise drive the tools.
+- **Terminate TLS and restrict the network.** Front the server with TLS (a reverse proxy) and
+  limit reachability with firewall / network policy; do not expose `/mcp` directly to the
+  internet.
+- **Prefer `stdio`** (the default) for single-client, local use such as Claude Desktop — it has
+  no network listener.
 
 ### MCP Resources and Prompts
 

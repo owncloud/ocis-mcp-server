@@ -12,7 +12,7 @@ func clearEnv() {
 		"OCIS_MCP_APP_TOKEN_USER", "OCIS_MCP_APP_TOKEN_VALUE",
 		"OCIS_MCP_OIDC_ISSUER", "OCIS_MCP_OIDC_CLIENT_ID", "OCIS_MCP_OIDC_CLIENT_SECRET",
 		"OCIS_MCP_OIDC_ACCESS_TOKEN", "OCIS_MCP_EDUCATION_ACCESS_TOKEN",
-		"OCIS_MCP_TRANSPORT", "OCIS_MCP_HTTP_ADDR", "OCIS_MCP_LOG_LEVEL",
+		"OCIS_MCP_TRANSPORT", "OCIS_MCP_HTTP_ADDR", "OCIS_MCP_HTTP_SECRET", "OCIS_MCP_LOG_LEVEL",
 		"OCIS_MCP_INSECURE", "OCIS_MCP_TLS_SKIP_VERIFY", "OCIS_MCP_HTTP_TIMEOUT",
 	} {
 		_ = os.Unsetenv(k)
@@ -269,6 +269,8 @@ func TestLoadHTTPTransport(t *testing.T) {
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
 	_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
 	_ = os.Setenv("OCIS_MCP_HTTP_ADDR", "0.0.0.0:9090")
+	// A non-loopback HTTP bind requires an authentication secret.
+	_ = os.Setenv("OCIS_MCP_HTTP_SECRET", "test-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -279,5 +281,44 @@ func TestLoadHTTPTransport(t *testing.T) {
 	}
 	if cfg.HTTPAddr != "0.0.0.0:9090" {
 		t.Errorf("HTTPAddr = %q, want 0.0.0.0:9090", cfg.HTTPAddr)
+	}
+	if !cfg.HTTPAuthEnabled() {
+		t.Error("HTTPAuthEnabled() = false, want true")
+	}
+}
+
+func TestLoadHTTP_NonLoopbackWithoutSecretFails(t *testing.T) {
+	addrs := []string{"0.0.0.0:9090", ":9090", "192.0.2.10:9090"}
+	for _, addr := range addrs {
+		t.Run(addr, func(t *testing.T) {
+			clearEnv()
+			_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+			_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
+			_ = os.Setenv("OCIS_MCP_HTTP_ADDR", addr)
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected error for non-loopback http bind %q without OCIS_MCP_HTTP_SECRET", addr)
+			}
+		})
+	}
+}
+
+func TestLoadHTTP_LoopbackWithoutSecretAllowed(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:8090", "localhost:8090", "[::1]:8090"} {
+		t.Run(addr, func(t *testing.T) {
+			clearEnv()
+			_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+			_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
+			_ = os.Setenv("OCIS_MCP_HTTP_ADDR", addr)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("loopback bind %q without secret should be allowed, got: %v", addr, err)
+			}
+			if !cfg.IsLoopbackBind() {
+				t.Errorf("IsLoopbackBind() = false for %q, want true", addr)
+			}
+			if cfg.HTTPAuthEnabled() {
+				t.Error("HTTPAuthEnabled() = true, want false (no secret set)")
+			}
+		})
 	}
 }
