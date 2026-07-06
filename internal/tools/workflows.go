@@ -140,9 +140,14 @@ func handleUploadAndShare(c *client.Client) mcp.ToolHandlerFor[UploadAndShareInp
 		fi := ms.Responses[0].ToFileInfo()
 
 		// Step 3: Share
+		// Recipients need the @libre.graph.recipient.type or oCIS rejects the
+		// DriveItemInvite with HTTP 400 (same requirement as create_share).
 		recipients := make([]map[string]any, len(input.Recipients))
 		for i, r := range input.Recipients {
-			recipients[i] = map[string]any{"objectId": r}
+			recipients[i] = map[string]any{
+				"objectId":                    r,
+				"@libre.graph.recipient.type": "user",
+			}
 		}
 		body := map[string]any{
 			"recipients": recipients,
