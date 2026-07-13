@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "ocis-mcp-server"
+SPDX-PackageSupplier = "ownCloud GmbH - A Kiteworks Company <ospo@kiteworks.com>"
+SPDX-PackageDownloadLocation = "https://github.com/owncloud/ocis-mcp-server"
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 ownCloud GmbH - A Kiteworks Company and ownCloud contributors"
+SPDX-License-Identifier = "Apache-2.0"
