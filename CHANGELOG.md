@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-14
+
+### Added
+
+- **HTTP transport authentication.** The HTTP transport now enforces a Bearer
+  secret (`OCIS_MCP_HTTP_SECRET`) on `/mcp`, closing a gap where any client
+  able to reach the listener could invoke every tool under the server's oCIS
+  identity. Binding to a non-loopback address without a secret now fails fast
+  at startup instead of serving unauthenticated; a loopback bind without a
+  secret remains allowed for local/dev use (with a warning logged). `stdio`
+  is unaffected. (#29)
+
+### Fixed
+
+- **Four tools rejected by oCIS 8.1.0-rc.1** — `ocis_invite_to_space` /
+  `ocis_upload_and_share` (and `ocis_create_project_space`, which invites
+  members) omitted the required `@libre.graph.recipient.type` on invite
+  recipients; `ocis_add_group_member` sent a bare user ID instead of a full
+  URL for `@odata.id`; `ocis_get_resource_by_id` double-prefixed the dav path
+  for full resource IDs; `ocis_list_assignments` omitted the required
+  `account_uuid`. All four request shapes now match oCIS 8.1.0-rc.1's
+  validation, with regression tests added for each. (#26)
+- **Root Apache-2.0 `LICENSE` text** — corrected fabricated and drifted
+  wording in the Appendix boilerplate so the file matches the canonical
+  SPDX Apache-2.0 text exactly. (#37)
+
+### Compatibility
+
+- Go 1.26+
+- oCIS 8.x (tested against 8.0.1 and 8.1.0-rc.1)
+- MCP via `github.com/modelcontextprotocol/go-sdk` v1.6.1
+
 ## [1.0.0] - 2026-06-14
 
 First stable release of the **ownCloud Infinite Scale (oCIS) MCP Server** — a
@@ -164,5 +196,6 @@ Fixes made since the `v1.0.0-beta` pre-release:
 - oCIS 8.x (tested against 8.0.1)
 - MCP via `github.com/modelcontextprotocol/go-sdk` v1.6.1
 
+[1.1.0]: https://github.com/owncloud/ocis-mcp-server/releases/tag/v1.1.0
 [1.0.0]: https://github.com/owncloud/ocis-mcp-server/releases/tag/v1.0.0
-[Unreleased]: https://github.com/owncloud/ocis-mcp-server/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/owncloud/ocis-mcp-server/compare/v1.1.0...HEAD
