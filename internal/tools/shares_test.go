@@ -27,13 +27,15 @@ func TestHandleCreateShare(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(200)
-				_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+				// The real /invite envelope is {"value":[...]} (verified against
+				// oCIS 8.0.1) — not {"permissions":[...]}.
+				_, _ = w.Write([]byte(`{"value":[{"id":"p1","roles":["viewer"]}]}`))
 			}))
 			defer srv.Close()
 
 			c := client.New(newTestConfig(srv.URL))
 			handler := handleCreateShare(c)
-			_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, CreateShareInput{
+			_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, CreateShareInput{
 				SpaceID: tt.spaceID, ItemID: tt.itemID,
 				Recipients: []string{"u1"}, Roles: []string{"viewer"},
 			})
@@ -45,6 +47,9 @@ func TestHandleCreateShare(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(output.Permissions) != 1 || output.Permissions[0].ID != "p1" {
+				t.Errorf("Permissions = %+v, want one with id p1", output.Permissions)
 			}
 		})
 	}

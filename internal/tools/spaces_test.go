@@ -313,7 +313,8 @@ func TestHandleInviteToSpace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"permissions":[{"id":"p1"}]}`))
+		// invite-to-space response envelope is {"value":[...]} (verified live).
+		_, _ = w.Write([]byte(`{"value":[{"id":"p1","roles":["viewer"]}]}`))
 	}))
 	defer srv.Close()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	libregraph "github.com/owncloud/libre-graph-api-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 )
@@ -140,28 +141,28 @@ func handleUploadAndShare(c *client.Client) mcp.ToolHandlerFor[UploadAndShareInp
 		fi := ms.Responses[0].ToFileInfo()
 
 		// Step 3: Share
-		// Recipients need the @libre.graph.recipient.type or oCIS rejects the
-		// DriveItemInvite with HTTP 400 (same requirement as create_share).
-		recipients := make([]map[string]any, len(input.Recipients))
+		recipients := make([]libregraph.DriveRecipient, len(input.Recipients))
 		for i, r := range input.Recipients {
-			recipients[i] = map[string]any{
-				"objectId":                    r,
-				"@libre.graph.recipient.type": "user",
-			}
+			rec := libregraph.NewDriveRecipient()
+			rec.SetObjectId(r)
+			recipients[i] = *rec
 		}
-		body := map[string]any{
-			"recipients": recipients,
-			"roles":      input.Roles,
-		}
-		path := fmt.Sprintf("/graph/v1beta1/drives/%s/items/%s/invite", input.SpaceID, fi.FileID)
-		result, err := client.PostJSON[InviteOutput](ctx, c, path, body)
+		invite := libregraph.NewDriveItemInvite()
+		invite.SetRecipients(recipients)
+		invite.SetRoles(input.Roles)
+		resp, _, err := c.GraphClient().DrivesPermissionsApi.
+			Invite(ctx, input.SpaceID, fi.FileID).DriveItemInvite(*invite).Execute()
 		if err != nil {
-			return nil, UploadAndShareOutput{FileUploaded: true}, fmt.Errorf("file uploaded but sharing failed: %w", err)
+			return nil, UploadAndShareOutput{FileUploaded: true}, fmt.Errorf("file uploaded but sharing failed: %w", sdkError(err))
+		}
+		perms, err := sdkConvert[[]Permission](resp.GetValue())
+		if err != nil {
+			return nil, UploadAndShareOutput{FileUploaded: true}, fmt.Errorf("file uploaded but mapping permissions failed: %w", err)
 		}
 
 		return nil, UploadAndShareOutput{
 			FileUploaded: true,
-			Permissions:  result.Permissions,
+			Permissions:  perms,
 			Message:      "file uploaded and shared",
 		}, nil
 	}
@@ -170,17 +171,21 @@ func handleUploadAndShare(c *client.Client) mcp.ToolHandlerFor[UploadAndShareInp
 func handleCreateProjectSpace(c *client.Client) mcp.ToolHandlerFor[CreateProjectSpaceInput, CreateProjectSpaceOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input CreateProjectSpaceInput) (*mcp.CallToolResult, CreateProjectSpaceOutput, error) {
 		// Step 1: Create space
-		body := map[string]any{
-			"name":      input.Name,
-			"driveType": "project",
-		}
+		drv := libregraph.NewDrive(input.Name)
+		drv.SetDriveType("project")
 		if input.Description != "" {
-			body["description"] = input.Description
+			drv.SetDescription(input.Description)
 		}
 		if input.Quota > 0 {
-			body["quota"] = map[string]int64{"total": input.Quota}
+			q := libregraph.NewQuota()
+			q.SetTotal(input.Quota)
+			drv.SetQuota(*q)
 		}
-		drive, err := client.PostJSON[Drive](ctx, c, "/graph/v1.0/drives", body)
+		created, _, err := c.GraphClient().DrivesApi.CreateDrive(ctx).Drive(*drv).Execute()
+		if err != nil {
+			return nil, CreateProjectSpaceOutput{}, fmt.Errorf("create space step failed: %w", sdkError(err))
+		}
+		drive, err := sdkConvert[Drive](created)
 		if err != nil {
 			return nil, CreateProjectSpaceOutput{}, fmt.Errorf("create space step failed: %w", err)
 		}
@@ -192,20 +197,24 @@ func handleCreateProjectSpace(c *client.Client) mcp.ToolHandlerFor[CreateProject
 
 		// Step 2: Invite members (if provided)
 		if len(input.Members) > 0 && len(input.MemberRoles) > 0 {
-			recipients := make([]map[string]any, len(input.Members))
+			recipients := make([]libregraph.DriveRecipient, len(input.Members))
 			for i, m := range input.Members {
-				recipients[i] = map[string]any{"objectId": m}
+				rec := libregraph.NewDriveRecipient()
+				rec.SetObjectId(m)
+				recipients[i] = *rec
 			}
-			inviteBody := map[string]any{
-				"recipients": recipients,
-				"roles":      input.MemberRoles,
-			}
-			path := fmt.Sprintf("/graph/v1beta1/drives/%s/root/invite", drive.ID)
-			result, err := client.PostJSON[InviteOutput](ctx, c, path, inviteBody)
-			if err != nil {
-				out.Message = fmt.Sprintf("space created but inviting members failed: %v", err)
-			} else {
-				out.Permissions = result.Permissions
+			invite := libregraph.NewDriveItemInvite()
+			invite.SetRecipients(recipients)
+			invite.SetRoles(input.MemberRoles)
+			resp, _, err := c.GraphClient().DrivesRootApi.
+				InviteSpaceRoot(ctx, drive.ID).DriveItemInvite(*invite).Execute()
+			switch {
+			case err != nil:
+				out.Message = fmt.Sprintf("space created but inviting members failed: %v", sdkError(err))
+			default:
+				if perms, cerr := sdkConvert[[]Permission](resp.GetValue()); cerr == nil {
+					out.Permissions = perms
+				}
 				out.Message = "space created with members"
 			}
 		}
@@ -269,9 +278,18 @@ func handleShareWithLink(c *client.Client) mcp.ToolHandlerFor[ShareWithLinkInput
 		if linkType == "" {
 			linkType = "view"
 		}
-		body := map[string]any{"type": linkType}
-		path := fmt.Sprintf("/graph/v1beta1/drives/%s/items/%s/createLink", input.SpaceID, input.ItemID)
-		perm, err := client.PostJSON[Permission](ctx, c, path, body)
+		lt, err := libregraph.NewSharingLinkTypeFromValue(linkType)
+		if err != nil {
+			return nil, ShareWithLinkOutput{}, fmt.Errorf("invalid link type %q: %w", linkType, err)
+		}
+		link := libregraph.NewDriveItemCreateLink()
+		link.SetType(*lt)
+		sdkPerm, _, err := c.GraphClient().DrivesPermissionsApi.
+			CreateLink(ctx, input.SpaceID, input.ItemID).DriveItemCreateLink(*link).Execute()
+		if err != nil {
+			return nil, ShareWithLinkOutput{}, sdkError(err)
+		}
+		perm, err := sdkConvert[Permission](sdkPerm)
 		if err != nil {
 			return nil, ShareWithLinkOutput{}, err
 		}
@@ -294,7 +312,11 @@ func handleGetSpaceOverview(c *client.Client) mcp.ToolHandlerFor[GetSpaceOvervie
 		}
 
 		// Step 1: Get space details
-		drive, err := client.GetJSON[Drive](ctx, c, "/graph/v1.0/drives/"+input.SpaceID, nil)
+		sdkDrive, _, err := c.GraphClient().DrivesApi.GetDrive(ctx, input.SpaceID).Execute()
+		if err != nil {
+			return nil, GetSpaceOverviewOutput{}, fmt.Errorf("get space step failed: %w", sdkError(err))
+		}
+		drive, err := sdkConvert[Drive](sdkDrive)
 		if err != nil {
 			return nil, GetSpaceOverviewOutput{}, fmt.Errorf("get space step failed: %w", err)
 		}
@@ -314,10 +336,10 @@ func handleGetSpaceOverview(c *client.Client) mcp.ToolHandlerFor[GetSpaceOvervie
 		}
 
 		// Step 3: List permissions
-		permPath := fmt.Sprintf("/graph/v1beta1/drives/%s/root/permissions", input.SpaceID)
-		perms, err := client.ListJSON[Permission](ctx, c, permPath, nil)
-		if err == nil {
-			out.Permissions = perms
+		if resp, _, perr := c.GraphClient().DrivesRootApi.ListPermissionsSpaceRoot(ctx, input.SpaceID).Execute(); perr == nil {
+			if perms, cerr := sdkConvert[[]Permission](resp.GetValue()); cerr == nil {
+				out.Permissions = perms
+			}
 		}
 
 		return nil, out, nil
