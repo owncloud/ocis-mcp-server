@@ -284,20 +284,22 @@ $env:PATH += ";$(go env GOPATH)\bin"
 
 ### Step 4: Create the mcphost config
 
+> **Important:** mcphost looks for its config file directly in your home directory --
+> `~/.mcphost.yml` or `~/.mcphost.json` -- **not** inside a `.mcphost` folder. It also uses
+> the key `environment` (not `env`) for environment variables. Using the wrong path or key
+> will make mcphost start with **zero tools loaded**, with no error message telling you why.
+
 #### On Mac / Linux
 
-```bash
-mkdir -p ~/.mcphost
-```
-
-Create the file `~/.mcphost/config.json`:
+Create the file `~/.mcphost.json`:
 
 ```json
 {
   "mcpServers": {
     "ocis": {
-      "command": "/full/path/to/ocis-mcp-server",
-      "env": {
+      "type": "local",
+      "command": ["/full/path/to/ocis-mcp-server"],
+      "environment": {
         "OCIS_MCP_OCIS_URL": "https://your-ocis-server.example.com",
         "OCIS_MCP_APP_TOKEN_USER": "admin",
         "OCIS_MCP_APP_TOKEN_VALUE": "your-token-here"
@@ -309,11 +311,10 @@ Create the file `~/.mcphost/config.json`:
 
 #### On Windows
 
-Create the folder and file at `%USERPROFILE%\.mcphost\config.json`:
+Create the file at `%USERPROFILE%\.mcphost.json`:
 
 ```powershell
-mkdir "$env:USERPROFILE\.mcphost"
-notepad "$env:USERPROFILE\.mcphost\config.json"
+notepad "$env:USERPROFILE\.mcphost.json"
 ```
 
 Paste the same JSON content as above (use the Windows path to your `ocis-mcp-server.exe`).
@@ -383,6 +384,19 @@ Replace `/path/to/ocis-mcp-server` with the actual location of the file.
 - Check that your app token user and value are correct.
 - Make sure there are no extra spaces when you copy-paste the token.
 - The token might have expired -- create a new one.
+
+### mcphost says "Loaded 0 tools from MCP servers"
+
+This means mcphost never found your config, and it fails silently -- no error, no warning.
+
+- Check the file is at `~/.mcphost.yml` or `~/.mcphost.json` (a file directly in your home
+  folder), not inside a `.mcphost/` folder.
+- Check you used `"environment"` as the key for environment variables, not `"env"`. mcphost
+  still accepts `"env"` in some code paths, but silently drops it in others -- `"environment"`
+  is the one that reliably works.
+- If mcphost ever auto-created an empty `~/.mcphost.yml` for you (it does this the first time
+  it can't find any config), make sure your real server config ends up in that same file --
+  a leftover empty one will take priority over a `~/.mcp.json` you edit later.
 
 ### "Command not found"
 
