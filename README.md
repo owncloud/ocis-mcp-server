@@ -116,6 +116,16 @@ not be reachable by untrusted callers.
   internet.
 - **Prefer `stdio`** (the default) for single-client, local use such as Claude Desktop — it has
   no network listener.
+- **There is no per-caller authorization.** `OCIS_MCP_HTTP_SECRET` gates access to the endpoint,
+  not to individual tools or accounts. Every caller who presents a valid bearer token gets the
+  full tool inventory running with the one oCIS credential configured on the server — if that
+  credential is an admin app token, every caller effectively has admin access. Do not put this
+  behind a gateway that forwards a shared secret to multiple end users unless you're comfortable
+  granting all of them that credential's privileges.
+- **Credential rotation requires a restart.** The configured app token or OIDC access token is
+  read once at startup; there is no hot-reload. If it expires or is revoked, every tool call
+  starts failing with an authentication error from oCIS until the process is restarted with a
+  fresh credential. Factor the resulting downtime into how short you make the app token's TTL.
 
 ### MCP Resources and Prompts
 
