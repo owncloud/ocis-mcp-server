@@ -1,4 +1,4 @@
-# agents.md -- oCIS MCP Server
+# AGENTS.md -- oCIS MCP Server
 
 ## Repository Overview
 
