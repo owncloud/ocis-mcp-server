@@ -1,0 +1,14 @@
+---
+services:
+  ocis-mcp-server:
+    build:
+      context: .
+    image: owncloud/ocis-mcp-server:${OCIS_MCP_SERVER_TAG:-dev}
+    env_file:
+      - .env
+    environment:
+      OCIS_MCP_TRANSPORT: http
+      OCIS_MCP_HTTP_ADDR: 0.0.0.0:8090
+    ports:
+      - "${OCIS_MCP_SERVER_PORT:-8090}:8090"
+    restart: unless-stopped
