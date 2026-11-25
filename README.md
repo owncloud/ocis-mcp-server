@@ -17,8 +17,9 @@ See the **[Getting Started Guide](GETTING_STARTED.md)** for a full walkthrough.
 make build
 
 # Configure
-export OCIS_URL=https://your-ocis-instance.example.com
-export OCIS_ACCESS_TOKEN=your-token
+export OCIS_MCP_OCIS_URL=https://your-ocis-instance.example.com
+export OCIS_MCP_APP_TOKEN_USER=your-user
+export OCIS_MCP_APP_TOKEN_VALUE=your-app-token
 
 # Run
 ./ocis-mcp-server
@@ -26,10 +27,22 @@ export OCIS_ACCESS_TOKEN=your-token
 
 ### Docker
 
+Official images are published to Docker Hub as
+[`owncloud/ocis-mcp-server`](https://hub.docker.com/r/owncloud/ocis-mcp-server), built from
+each signed release tag by
+[owncloud-docker/ocis-mcp-server](https://github.com/owncloud-docker/ocis-mcp-server). The
+default transport is stdio, so `-i` is required:
+
 ```bash
-make docker-build
-docker run -e OCIS_URL=... -e OCIS_ACCESS_TOKEN=... owncloud/ocis-mcp-server
+docker run -i --rm \
+  -e OCIS_MCP_OCIS_URL=https://your-ocis-instance.example.com \
+  -e OCIS_MCP_APP_TOKEN_USER=your-user \
+  -e OCIS_MCP_APP_TOKEN_VALUE=your-app-token \
+  owncloud/ocis-mcp-server:latest
 ```
+
+See the image's README for the HTTP transport, MCP client configuration and supported tags.
+To build a local image from this checkout instead, run `make docker-build`.
 
 ### Run Tests
 
