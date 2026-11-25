@@ -17,8 +17,9 @@ See the **[Getting Started Guide](GETTING_STARTED.md)** for a full walkthrough.
 make build
 
 # Configure
-export OCIS_URL=https://your-ocis-instance.example.com
-export OCIS_ACCESS_TOKEN=your-token
+export OCIS_MCP_OCIS_URL=https://your-ocis-instance.example.com
+export OCIS_MCP_APP_TOKEN_USER=admin
+export OCIS_MCP_APP_TOKEN_VALUE=your-app-token
 
 # Run
 ./ocis-mcp-server
@@ -28,8 +29,24 @@ export OCIS_ACCESS_TOKEN=your-token
 
 ```bash
 make docker-build
-docker run -e OCIS_URL=... -e OCIS_ACCESS_TOKEN=... owncloud/ocis-mcp-server
+docker run \
+  -e OCIS_MCP_OCIS_URL=https://your-ocis-instance.example.com \
+  -e OCIS_MCP_APP_TOKEN_USER=admin \
+  -e OCIS_MCP_APP_TOKEN_VALUE=your-app-token \
+  owncloud/ocis-mcp-server
 ```
+
+### Docker Compose
+
+```bash
+cp .env.example .env
+# edit .env: set OCIS_MCP_OCIS_URL, OCIS_MCP_HTTP_SECRET, and an app token
+docker-compose up --build
+```
+
+The server listens on `http://localhost:8090/mcp` (see `.env.example` for every available
+setting, and [Securing the HTTP transport](#securing-the-http-transport) below for what
+`OCIS_MCP_HTTP_SECRET` protects against).
 
 ### Run Tests
 
