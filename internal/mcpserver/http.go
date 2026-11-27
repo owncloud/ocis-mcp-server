@@ -14,7 +14,12 @@ import (
 func NewHTTPHandler(server *mcp.Server, secret string) http.Handler {
 	handler := mcp.NewStreamableHTTPHandler(
 		func(_ *http.Request) *mcp.Server { return server },
-		nil,
+		&mcp.StreamableHTTPOptions{
+			// Stateless is required to serve MCP 2026-07-28 requests.
+			Stateless: true,
+			// Without this a 2026-07-28 client disconnect does not cancel the handler.
+			PropagateRequestCancellation: true,
+		},
 	)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(secret)(handler)))

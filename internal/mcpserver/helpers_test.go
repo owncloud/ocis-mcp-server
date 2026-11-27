@@ -1,9 +1,13 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,6 +81,65 @@ func newTestServer(t *testing.T, educationToken string) (*mcp.Server, *fakeOCIS)
 	fake := newFakeOCIS(t)
 	cfg := newTestConfig(fake.srv.URL, educationToken)
 	return New("test", client.New(cfg), cfg), fake
+}
+
+// startHTTP serves NewHTTPHandler on an httptest server and returns the /mcp URL
+// together with the fake oCIS backing it.
+func startHTTP(t *testing.T, secret string) (string, *fakeOCIS) {
+	t.Helper()
+	s, fake := newTestServer(t, "")
+	srv := httptest.NewServer(NewHTTPHandler(s, secret))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/mcp", fake
+}
+
+// rawPost POSTs body and decodes the reply, which is either application/json or
+// an event stream whose first data line carries the JSON-RPC message.
+func rawPost(t *testing.T, url string, headers map[string]string, body string) (int, http.Header, map[string]any) {
+	t.Helper()
+	status, hdr, rpc, err := doRawPost(context.Background(), url, headers, body)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	return status, hdr, rpc
+}
+
+func doRawPost(ctx context.Context, url string, headers map[string]string, body string) (int, http.Header, map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	payload := raw
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		payload = nil
+		for _, line := range strings.Split(string(raw), "\n") {
+			if rest, ok := strings.CutPrefix(line, "data:"); ok {
+				payload = []byte(strings.TrimSpace(rest))
+				break
+			}
+		}
+	}
+	var rpc map[string]any
+	if len(bytes.TrimSpace(payload)) > 0 {
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			rpc = map[string]any{"_raw": string(raw)}
+		}
+	}
+	return resp.StatusCode, resp.Header, rpc, nil
 }
 
 // connectInMemory connects a client to s over an in-memory transport.
