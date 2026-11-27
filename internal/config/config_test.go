@@ -340,6 +340,8 @@ func TestLoadHTTPAuthModes(t *testing.T) {
 		wantScopes  []string
 		wantWarnSub []string
 		wantEnabled bool
+		wantNoSec   bool // HTTPSecret must be empty after Load
+		wantWarns   int  // expected warning count, -1 to skip
 	}{
 		{name: "inferred oidc from issuer", env: map[string]string{
 			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
@@ -347,7 +349,8 @@ func TestLoadHTTPAuthModes(t *testing.T) {
 			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
 		{name: "inferred secret", env: map[string]string{
 			"OCIS_MCP_HTTP_SECRET": secretVal, "OCIS_MCP_HTTP_ADDR": "0.0.0.0:8090"},
-			wantMode: "secret", wantEnabled: true},
+			wantMode: "secret", wantEnabled: true, wantWarns: 1,
+			wantWarnSub: []string{"deprecated"}},
 		{name: "inferred none on loopback", env: map[string]string{},
 			wantMode: "none"},
 		{name: "issuer and secret without mode", env: map[string]string{
@@ -358,18 +361,18 @@ func TestLoadHTTPAuthModes(t *testing.T) {
 			"OCIS_MCP_HTTP_AUTH": "oidc", "OCIS_MCP_HTTP_OIDC_ISSUER": issuer,
 			"OCIS_MCP_HTTP_PUBLIC_URL": pub, "OCIS_MCP_HTTP_SECRET": secretVal},
 			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true,
-			wantWarnSub: []string{"OCIS_MCP_HTTP_SECRET"}},
+			wantNoSec: true, wantWarns: 1, wantWarnSub: []string{"OCIS_MCP_HTTP_SECRET"}},
 		{name: "explicit secret ignores issuer and warns", env: map[string]string{
 			"OCIS_MCP_HTTP_AUTH": "secret", "OCIS_MCP_HTTP_OIDC_ISSUER": issuer,
 			"OCIS_MCP_HTTP_SECRET": secretVal},
-			wantMode: "secret", wantEnabled: true,
-			wantWarnSub: []string{"OCIS_MCP_HTTP_OIDC_ISSUER"}},
+			wantMode: "secret", wantEnabled: true, wantWarns: 2,
+			wantWarnSub: []string{"OCIS_MCP_HTTP_OIDC_ISSUER", "deprecated"}},
 		{name: "explicit secret with empty secret", env: map[string]string{
 			"OCIS_MCP_HTTP_AUTH": "secret"},
 			wantErr: "OCIS_MCP_HTTP_SECRET"},
 		{name: "explicit none ignores secret and warns", env: map[string]string{
 			"OCIS_MCP_HTTP_AUTH": "none", "OCIS_MCP_HTTP_SECRET": secretVal},
-			wantMode:    "none",
+			wantMode: "none", wantNoSec: true, wantWarns: 1,
 			wantWarnSub: []string{"OCIS_MCP_HTTP_SECRET"}},
 		{name: "oidc without issuer", env: map[string]string{
 			"OCIS_MCP_HTTP_AUTH": "oidc", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
@@ -412,6 +415,38 @@ func TestLoadHTTPAuthModes(t *testing.T) {
 			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
 			"OCIS_MCP_HTTP_OIDC_SCOPES": "a:b  c:d, e:f"},
 			wantMode: "oidc", wantScopes: []string{"a:b", "c:d", "e:f"}, wantEnabled: true},
+		{name: "scopes duplicate entry kept as given", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_OIDC_SCOPES": "a:b,a:b"},
+			wantMode: "oidc", wantScopes: []string{"a:b", "a:b"}, wantEnabled: true},
+		{name: "scopes empty entry dropped", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_OIDC_SCOPES": "a,,b"},
+			wantMode: "oidc", wantScopes: []string{"a", "b"}, wantEnabled: true},
+		{name: "issuer with userinfo", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "https://user:pw@idp.example.com", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "issuer with fragment", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer + "#f", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "public url with userinfo", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": "https://user@mcp.example.com"},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "issuer http localhost.evil.com", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://localhost.evil.com", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "issuer http localhost@evil.com", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://localhost@evil.com", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "issuer http upper-case LOCALHOST", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://LOCALHOST:8080", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
+		{name: "issuer http ipv6 loopback with port", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://[::1]:8080", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
+		{name: "issuer http ipv6 loopback without port", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://[::1]", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
 		{name: "stdio ignores bad http settings", env: map[string]string{
 			"OCIS_MCP_TRANSPORT": "stdio", "OCIS_MCP_HTTP_AUTH": "bogus",
 			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://idp.example.com",
@@ -454,6 +489,12 @@ func TestLoadHTTPAuthModes(t *testing.T) {
 			}
 			if tt.wantScopes != nil && !reflect.DeepEqual(cfg.HTTPOIDCScopes, tt.wantScopes) {
 				t.Errorf("HTTPOIDCScopes = %v, want %v", cfg.HTTPOIDCScopes, tt.wantScopes)
+			}
+			if tt.wantNoSec && cfg.HTTPSecret != "" {
+				t.Error("HTTPSecret not cleared for a non-secret mode")
+			}
+			if len(cfg.Warnings) != tt.wantWarns {
+				t.Errorf("got %d warnings %q, want %d", len(cfg.Warnings), cfg.Warnings, tt.wantWarns)
 			}
 			joined := strings.Join(cfg.Warnings, "\n")
 			if strings.Contains(joined, secretVal) {

@@ -184,6 +184,10 @@ func (c *Config) resolveHTTPAuth() error {
 		}
 	case "oidc", "secret", "none":
 		c.warnUnusedHTTPCredentials()
+		if c.HTTPAuth != "secret" {
+			// The secret must never authenticate in another mode.
+			c.HTTPSecret = ""
+		}
 	default:
 		return fmt.Errorf("OCIS_MCP_HTTP_AUTH must be 'oidc', 'secret' or 'none', got %q", c.HTTPAuth)
 	}
@@ -241,15 +245,17 @@ func checkSecureURL(name, raw string, originOnly bool) error {
 	switch strings.ToLower(u.Scheme) {
 	case "https":
 	case "http":
-		if !isLoopbackHost(u.Host) {
+		if !isLoopbackName(u.Hostname()) {
 			return fmt.Errorf("%s must use https (plain http is only allowed for a loopback host)", name)
 		}
 	default:
 		return fmt.Errorf("%s must use https (plain http is only allowed for a loopback host)", name)
 	}
+	if u.User != nil || u.Fragment != "" || strings.Contains(raw, "#") {
+		return fmt.Errorf("%s must not contain userinfo or a fragment", name)
+	}
 	if originOnly {
-		if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
-			strings.Contains(raw, "#") || u.User != nil {
+		if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery {
 			return fmt.Errorf("%s must be an origin (scheme, host, optional port) with no path, query or fragment", name)
 		}
 	}
@@ -342,6 +348,16 @@ func isLoopbackHost(addr string) bool {
 		return false
 	}
 	return ip.IsLoopback()
+}
+
+// isLoopbackName reports whether a bare host name (no port, no brackets) is loopback.
+func isLoopbackName(host string) bool {
+	host = strings.ToLower(host)
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func envBool(key string) bool {
