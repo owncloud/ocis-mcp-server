@@ -24,6 +24,7 @@ package keycloak
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -203,9 +204,18 @@ func startMCP(t *testing.T) string {
 	return srv.URL + "/mcp"
 }
 
+// reply is what the MCP endpoint answered.
+type reply struct {
+	status    int
+	challenge string
+	body      string
+	rpc       map[string]any
+}
+
 // postToolsList sends tools/list with the public host, because the handler checks the
 // Host header against the public URL while the connection goes to the httptest listener.
-func postToolsList(t *testing.T, mcpURL, token string) int {
+// The reply body is JSON or an event stream whose first data line carries the message.
+func postToolsList(t *testing.T, mcpURL, token string) reply {
 	t.Helper()
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
 	req, err := http.NewRequest(http.MethodPost, mcpURL, strings.NewReader(body))
@@ -225,28 +235,113 @@ func postToolsList(t *testing.T, mcpURL, token string) int {
 		t.Fatalf("POST /mcp: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read /mcp reply: %v", err)
+	}
+	r := reply{status: resp.StatusCode, challenge: resp.Header.Get("WWW-Authenticate"), body: string(raw)}
+	payload := raw
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		payload = nil
+		for _, line := range strings.Split(string(raw), "\n") {
+			if rest, ok := strings.CutPrefix(line, "data:"); ok {
+				payload = []byte(strings.TrimSpace(rest))
+				break
+			}
+		}
+	}
+	_ = json.Unmarshal(payload, &r.rpc)
+	return r
+}
+
+// claims decodes the JWT payload in memory to check the test's preconditions. Neither
+// the token nor the payload is ever printed.
+func claims(t *testing.T, token string) (audiences []string, scopes []string) {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatal("access token is not a JWT")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode token payload: %v", err)
+	}
+	var c struct {
+		Aud   json.RawMessage `json:"aud"`
+		Scope string          `json:"scope"`
+	}
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatalf("parse token payload: %v", err)
+	}
+	var one string
+	var many []string
+	switch {
+	case json.Unmarshal(c.Aud, &many) == nil:
+		audiences = many
+	case json.Unmarshal(c.Aud, &one) == nil:
+		audiences = []string{one}
+	}
+	return audiences, strings.Fields(c.Scope)
+}
+
+func contains(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestKeycloakInbound(t *testing.T) {
 	startKeycloak(t)
 	mcpURL := startMCP(t)
+	resource := publicURL + "/mcp"
+	metadataURL := publicURL + "/.well-known/oauth-protected-resource/mcp"
 
 	tests := []struct {
-		name  string
-		token string
-		want  int
+		name      string
+		token     string
+		wantAud   bool // the token names the resource in aud
+		wantScope bool // the token carries ocis:mcp
+		want      int
+		wantBody  string // fixed rejection reason
 	}{
-		{"valid audience and scope", accessToken(t, audienceClient, "ocis:mcp"), http.StatusOK},
-		{"wrong audience", accessToken(t, noAudienceClient, "ocis:mcp"), http.StatusUnauthorized},
-		{"missing scope", accessToken(t, audienceClient, ""), http.StatusForbidden},
-		{"no token", "", http.StatusUnauthorized},
+		{"valid audience and scope", accessToken(t, audienceClient, "ocis:mcp"), true, true, http.StatusOK, ""},
+		{"wrong audience", accessToken(t, noAudienceClient, "ocis:mcp"), false, true, http.StatusUnauthorized, "invalid token: audience"},
+		{"missing scope", accessToken(t, audienceClient, ""), true, false, http.StatusForbidden, "insufficient scope"},
+		{"no token", "", false, false, http.StatusUnauthorized, "no bearer token"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := postToolsList(t, mcpURL, tt.token); got != tt.want {
-				t.Errorf("status = %d, want %d", got, tt.want)
+			if tt.token != "" {
+				aud, scopes := claims(t, tt.token)
+				if got := contains(aud, resource); got != tt.wantAud {
+					t.Fatalf("precondition: aud contains resource = %v, want %v", got, tt.wantAud)
+				}
+				if got := contains(scopes, "ocis:mcp"); got != tt.wantScope {
+					t.Fatalf("precondition: scope contains ocis:mcp = %v, want %v", got, tt.wantScope)
+				}
+			}
+			r := postToolsList(t, mcpURL, tt.token)
+			if r.status != tt.want {
+				t.Fatalf("status = %d, want %d", r.status, tt.want)
+			}
+			if tt.want == http.StatusOK {
+				result, _ := r.rpc["result"].(map[string]any)
+				if tools, _ := result["tools"].([]any); len(tools) == 0 {
+					t.Error("200 reply has no tools in result")
+				}
+				return
+			}
+			if !strings.Contains(r.challenge, "resource_metadata="+`"`+metadataURL+`"`) {
+				t.Errorf("challenge lacks resource_metadata for %s", metadataURL)
+			}
+			if !strings.Contains(r.challenge, "ocis:mcp") {
+				t.Error("challenge lacks the required scope")
+			}
+			if got := strings.TrimSpace(r.body); got != tt.wantBody {
+				t.Errorf("rejection reason = %q, want %q", got, tt.wantBody)
 			}
 		})
 	}
