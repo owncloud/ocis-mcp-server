@@ -219,8 +219,8 @@ func TestSelectAuthMode(t *testing.T) {
 	}{
 		{
 			name: "explicit overrides",
-			cfg:  Config{AuthMode: "custom"},
-			want: "custom",
+			cfg:  Config{AuthMode: "none", AppTokenUser: "u", AppTokenValue: "v"},
+			want: "none",
 		},
 		{
 			name: "infer app-token",
@@ -243,6 +243,70 @@ func TestSelectAuthMode(t *testing.T) {
 			got := selectAuthMode(&tt.cfg)
 			if got != tt.want {
 				t.Errorf("selectAuthMode() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadAuthModeValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		env      map[string]string
+		wantMode string
+		wantErr  []string // substrings the error must contain; nil means success
+	}{
+		{name: "app-token", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "app-token"}, wantMode: "app-token"},
+		{name: "static-bearer", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "static-bearer"}, wantMode: "static-bearer"},
+		{name: "none", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "none"}, wantMode: "none"},
+		{name: "unset infers static-bearer from the token", env: map[string]string{}, wantMode: "static-bearer"},
+		{name: "unknown value", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "custom"},
+			wantErr: []string{"OCIS_MCP_OCIS_AUTH_MODE", "app-token", "static-bearer", "none"}},
+		{name: "typo with underscore", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "static_bearer"},
+			wantErr: []string{"OCIS_MCP_OCIS_AUTH_MODE", "static-bearer"}},
+		{name: "different case", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "None"},
+			wantErr: []string{"OCIS_MCP_OCIS_AUTH_MODE"}},
+		{name: "new name oidc hints static-bearer", env: map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "oidc"},
+			wantErr: []string{"OCIS_MCP_OCIS_AUTH_MODE", "oidc", "use static-bearer"}},
+		{name: "legacy name oidc still maps to static-bearer", env: map[string]string{"OCIS_MCP_AUTH_MODE": "oidc"},
+			wantMode: "static-bearer"},
+		{name: "legacy name unknown value fails", env: map[string]string{"OCIS_MCP_AUTH_MODE": "custom"},
+			wantErr: []string{"app-token", "static-bearer", "none"}},
+		{name: "new name oidc wins over legacy app-token and still fails",
+			env:     map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "oidc", "OCIS_MCP_AUTH_MODE": "app-token"},
+			wantErr: []string{"use static-bearer"}},
+		{name: "new name valid wins over legacy oidc",
+			env:      map[string]string{"OCIS_MCP_OCIS_AUTH_MODE": "none", "OCIS_MCP_AUTH_MODE": "oidc"},
+			wantMode: "none"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv()
+			t.Cleanup(clearEnv)
+			_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+			_ = os.Setenv("OCIS_MCP_OCIS_BEARER_TOKEN", "dummy-bearer-not-a-secret")
+			for k, v := range tt.env {
+				_ = os.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+				if cfg.AuthMode != tt.wantMode {
+					t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, tt.wantMode)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Load succeeded with AuthMode %q, want an error", cfg.AuthMode)
+			}
+			for _, sub := range tt.wantErr {
+				if !strings.Contains(err.Error(), sub) {
+					t.Errorf("error %q does not contain %q", err, sub)
+				}
+			}
+			if strings.Contains(err.Error(), "dummy-bearer-not-a-secret") {
+				t.Error("error contains a credential")
 			}
 		})
 	}

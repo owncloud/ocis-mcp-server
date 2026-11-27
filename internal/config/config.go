@@ -138,6 +138,10 @@ func (c *Config) validate() error {
 		return fmt.Errorf("OCIS_MCP_TRANSPORT must be 'stdio' or 'http', got %q", c.Transport)
 	}
 
+	if err := c.validateAuthMode(); err != nil {
+		return err
+	}
+
 	if err := c.resolveHTTPAuth(); err != nil {
 		return err
 	}
@@ -150,6 +154,20 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+// validateAuthMode rejects an explicit outbound auth mode that is not one of the three
+// known ones, after alias resolution. An unknown value would otherwise send no
+// Authorization header at all. The value is not echoed: it is user input of unknown
+// origin.
+func (c *Config) validateAuthMode() error {
+	switch c.AuthMode {
+	case "", "app-token", "static-bearer", "none":
+		return nil
+	case "oidc":
+		return fmt.Errorf("OCIS_MCP_OCIS_AUTH_MODE must be one of app-token, static-bearer, none; oidc is not a valid value here, use static-bearer for a bearer token")
+	}
+	return fmt.Errorf("OCIS_MCP_OCIS_AUTH_MODE must be one of app-token, static-bearer, none")
 }
 
 // getenvAlias reads a setting by its current name and falls back to a deprecated name.
