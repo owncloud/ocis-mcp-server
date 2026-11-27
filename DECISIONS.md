@@ -76,7 +76,7 @@ Consequences.
 - B: operators migrate on their schedule. One mode per instance keeps the security claim simple.
 - C: a leaked shared secret would bypass identity entirely. That undoes the point of OIDC. Not recommended.
 - B: if mode is unset it is inferred. Issuer set gives `oidc`, secret set gives `secret`, neither gives `none`.
-  Both set is a startup error, matching the existing ambiguity check for outbound auth.
+  Both set without an explicit mode is a startup error, matching the existing ambiguity check for outbound auth. With an explicit mode, that mode wins and the unused credential setting logs a warning.
 - Non-loopback bind with mode `none` stays refused.
 
 ## G4. Token validation
@@ -121,10 +121,10 @@ owncloud/ocis-mcp-server without your OK, since that is outward-facing.
 - Canonical resource URI: `<public base URL>` plus `/mcp`, for example `https://mcp.example.com/mcp`. Lowercase scheme and
   host, no trailing slash, no fragment. Needs a public base URL setting because we cannot trust the Host header
   behind a proxy. Comparison uses `oauthex.MatchesResource`.
-- Optional audience override setting for IdPs that mint a different but dedicated audience string.
+- No audience override setting. Metadata `resource` and accepted `aud` are the same canonical URI.
 - Clock skew: 60 seconds leeway, constant, no setting.
 - Discovery: try OIDC Discovery, then RFC 8414. The discovered `issuer` must equal the configured issuer.
-  The `jwks_uri` must be https unless the operator marks the issuer insecure.
+  The issuer and `jwks_uri` must be https, except plain http for a loopback host.
 - JWKS cache: refresh hourly. Refetch on unknown `kid`, at most once per 60 seconds, fetch timeout 10 seconds,
   singleflight. On fetch failure keep serving last-known-good keys for up to 24 hours, and fail closed for unknown `kid`.
 - Token only from the `Authorization: Bearer` header. An `access_token` query parameter is ignored and the
@@ -207,9 +207,8 @@ Proposed names under A:
 | Direction | New name | Replaces or adds |
 |---|---|---|
 | Inbound | `OCIS_MCP_HTTP_AUTH` (`oidc`, `secret`, `none`) | new |
-| Inbound | `OCIS_MCP_HTTP_PUBLIC_URL` | new, canonical base URL |
+| Inbound | `OCIS_MCP_HTTP_PUBLIC_URL` | new, origin only, no path |
 | Inbound | `OCIS_MCP_HTTP_OIDC_ISSUER` | new |
-| Inbound | `OCIS_MCP_HTTP_OIDC_AUDIENCE` | new, optional override |
 | Inbound | `OCIS_MCP_HTTP_OIDC_SCOPES` | new, default one scope (name to confirm, proposal `ocis:mcp`) |
 | Inbound | `OCIS_MCP_HTTP_OIDC_CA_FILE` | new |
 | Inbound | `OCIS_MCP_HTTP_SECRET` | stays, deprecated |
@@ -246,7 +245,8 @@ and the old variable names. Tagging is the maintainers' call. We only write the 
 - Roots, Sampling and Logging stay untouched (out of scope). The SDK still advertises `logging` by default.
 - The conformance harness is tried in Phase 1. If it cannot target our server, I report that and rely on in-process tests.
 
-## What I need
+## Answers
 
-One line per gate. Open items only you can answer: G4.2 library choice, whether I may open the dependency issue,
-G6 (A or C), and whether Phase 4 should be planned as part of this effort.
+Recorded 2026-11-27: "go", read as accepting every recommendation.
+G1 A, G2 A, G3 B, G4 A with library i, G5 (a) now with exchange later, G6 A, G7 A, G8 A.
+Not covered by the answer: filing the dependency issue (still needs an explicit OK) and Phase 4 (out of this effort).
