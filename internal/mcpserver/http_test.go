@@ -134,7 +134,7 @@ func TestHTTPSDKClients(t *testing.T) {
 			if err != nil {
 				t.Fatalf("connect: %v", err)
 			}
-			defer cs.Close()
+			defer func() { _ = cs.Close() }()
 			tools, err := cs.ListTools(ctx, nil)
 			if err != nil {
 				t.Fatalf("ListTools: %v", err)
@@ -166,7 +166,7 @@ func TestHTTPUnsupportedMethods(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusMethodNotAllowed {
 				t.Errorf("status = %d, want 405", resp.StatusCode)
 			}
