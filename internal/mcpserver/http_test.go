@@ -428,15 +428,15 @@ func TestHTTPBearerSecret(t *testing.T) {
 	const secret = "dummy-secret"
 	listBody := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
 	tests := []struct {
-		name    string
-		secret  string
-		auth    string
-		want401 bool
+		name   string
+		secret string
+		auth   string
+		want   int
 	}{
-		{"no header", secret, "", true},
-		{"wrong token", secret, "Bearer wrong-token", true},
-		{"right token", secret, "Bearer " + secret, false},
-		{"empty secret needs no header", "", "", false},
+		{"no header", secret, "", http.StatusUnauthorized},
+		{"wrong token", secret, "Bearer wrong-token", http.StatusUnauthorized},
+		{"right token", secret, "Bearer " + secret, http.StatusOK},
+		{"empty secret needs no header", "", "", http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -446,10 +446,10 @@ func TestHTTPBearerSecret(t *testing.T) {
 				h["Authorization"] = tt.auth
 			}
 			status, hdr, _ := rawPost(t, url, h, listBody)
-			if (status == http.StatusUnauthorized) != tt.want401 {
-				t.Fatalf("status = %d, want401 = %v", status, tt.want401)
+			if status != tt.want {
+				t.Fatalf("status = %d, want %d", status, tt.want)
 			}
-			if tt.want401 && !strings.HasPrefix(hdr.Get("WWW-Authenticate"), "Bearer") {
+			if tt.want == http.StatusUnauthorized && !strings.HasPrefix(hdr.Get("WWW-Authenticate"), "Bearer") {
 				t.Errorf("WWW-Authenticate = %q, want Bearer prefix", hdr.Get("WWW-Authenticate"))
 			}
 		})
