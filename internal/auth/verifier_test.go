@@ -62,6 +62,32 @@ func (e *verifierEnv) claims() map[string]any {
 	}
 }
 
+// paddedToken returns a validly signed RS256 token whose length is within three
+// characters of the 8 KiB cap, plus extra padding characters. extra 0 yields a
+// token of 8189 to 8192 characters, extra 3 one of at least 8193.
+func paddedToken(t *testing.T, e *verifierEnv, extra int) string {
+	t.Helper()
+	build := func(pad int) string {
+		c := e.claims()
+		c["pad"] = strings.Repeat("a", pad)
+		return signToken(t, c, signOpts{Kid: rsaKID, Key: e.rsa})
+	}
+	pad := (maxTokenBytes - len(build(0))) * 3 / 4
+	for i := 0; i < 20; i++ {
+		n := len(build(pad))
+		switch {
+		case n > maxTokenBytes:
+			pad--
+		case n < maxTokenBytes-3:
+			pad++
+		default:
+			return build(pad + extra)
+		}
+	}
+	t.Fatal("could not size the padded token")
+	return ""
+}
+
 func TestVerify(t *testing.T) {
 	type row struct {
 		name   string
@@ -69,6 +95,13 @@ func TestVerify(t *testing.T) {
 		opts   func(e *verifierEnv) signOpts
 		token  func(e *verifierEnv) string // overrides signing when set
 		accept bool
+		// reason is the fixed rejection reason the verifier must give. Pinning it
+		// shows which layer rejected: the parser alone would give "signature" for
+		// a mismatched key type, only the key binding gives "signing key".
+		reason string
+		// noKeyFetch requires that no JWKS request was made: the allow-list, the
+		// kid check and the size guard must reject before any key lookup.
+		noKeyFetch bool
 	}
 	rsaOpts := func(e *verifierEnv) signOpts { return signOpts{Kid: rsaKID, Key: e.rsa} }
 	rows := []row{
@@ -98,7 +131,7 @@ func TestVerify(t *testing.T) {
 		{name: "missing exp", claims: func(e *verifierEnv, c map[string]any) { delete(c, "exp") }},
 		{name: "missing sub", claims: func(e *verifierEnv, c map[string]any) { delete(c, "sub") }},
 		{name: "empty sub", claims: func(e *verifierEnv, c map[string]any) { c["sub"] = "" }},
-		{name: "bad signature", token: func(e *verifierEnv) string {
+		{name: "bad signature", reason: "signature", token: func(e *verifierEnv) string {
 			tok := signToken(t, e.claims(), rsaOpts(e))
 			i := strings.LastIndex(tok, ".")
 			sig := []byte(tok[i+1:])
@@ -109,31 +142,33 @@ func TestVerify(t *testing.T) {
 			}
 			return tok[:i+1] + string(sig)
 		}},
-		{name: "signed by foreign key", opts: func(e *verifierEnv) signOpts {
+		{name: "signed by foreign key", reason: "signature", opts: func(e *verifierEnv) signOpts {
 			other := newTestIdP(t, idpOptions{path: "/x"})
 			return signOpts{Kid: rsaKID, Key: other.AddRSAKey(t, "foreign")}
 		}},
-		{name: "unknown kid", opts: func(e *verifierEnv) signOpts { return signOpts{Kid: "unknown-kid-55aa", Key: e.rsa} }},
-		{name: "no kid", opts: func(e *verifierEnv) signOpts { return signOpts{OmitKid: true, Key: e.rsa} }},
-		{name: "empty kid", opts: func(e *verifierEnv) signOpts { return signOpts{Kid: "", Key: e.rsa} }},
-		{name: "alg none", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "none", Kid: rsaKID} }},
-		{name: "HS256 with DER public key as secret", opts: func(e *verifierEnv) signOpts {
+		{name: "unknown kid", reason: "signing key", opts: func(e *verifierEnv) signOpts { return signOpts{Kid: "unknown-kid-55aa", Key: e.rsa} }},
+		{name: "no kid", reason: "signing key", noKeyFetch: true, opts: func(e *verifierEnv) signOpts { return signOpts{OmitKid: true, Key: e.rsa} }},
+		{name: "empty kid", reason: "signing key", noKeyFetch: true, opts: func(e *verifierEnv) signOpts { return signOpts{Kid: "", Key: e.rsa} }},
+		{name: "alg none", reason: "signature", noKeyFetch: true, opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "none", Kid: rsaKID} }},
+		{name: "HS256 with DER public key as secret", reason: "signature", noKeyFetch: true, opts: func(e *verifierEnv) signOpts {
 			return signOpts{Alg: "HS256", Kid: rsaKID, HMACSecret: x509.MarshalPKCS1PublicKey(&e.rsa.PublicKey)}
 		}},
-		{name: "HS256 with PEM public key as secret", opts: func(e *verifierEnv) signOpts {
+		{name: "HS256 with PEM public key as secret", reason: "signature", noKeyFetch: true, opts: func(e *verifierEnv) signOpts {
 			der, _ := x509.MarshalPKIXPublicKey(&e.rsa.PublicKey)
 			return signOpts{Alg: "HS256", Kid: rsaKID, HMACSecret: pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})}
 		}},
 		{name: "ES256 accepted", accept: true, opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "ES256", Kid: ecKID, Key: e.ec} }},
 		{name: "PS256 accepted", accept: true, opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "PS256", Kid: rsaKID, Key: e.rsa} }},
-		{name: "RS256 header with EC key under kid", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "RS256", Kid: ecKID, Key: e.rsa} }},
-		{name: "PS256 header with EC key under kid", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "PS256", Kid: ecKID, Key: e.rsa} }},
-		{name: "ES256 header with RSA key under kid", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "ES256", Kid: rsaKID, Key: e.ec} }},
-		{name: "empty token", token: func(*verifierEnv) string { return "" }},
-		{name: "token with a space", token: func(e *verifierEnv) string { return signToken(t, e.claims(), rsaOpts(e)) + " x" }},
-		{name: "token with a newline", token: func(e *verifierEnv) string { return signToken(t, e.claims(), rsaOpts(e)) + "\n" }},
-		{name: "oversized token", token: func(e *verifierEnv) string { return strings.Repeat("a", 8*1024+1) }},
-		{name: "not a jwt", token: func(*verifierEnv) string { return "opaque-access-token-value" }},
+		{name: "RS256 header with EC key under kid", reason: "signing key", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "RS256", Kid: ecKID, Key: e.rsa} }},
+		{name: "PS256 header with EC key under kid", reason: "signing key", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "PS256", Kid: ecKID, Key: e.rsa} }},
+		{name: "ES256 header with RSA key under kid", reason: "signing key", opts: func(e *verifierEnv) signOpts { return signOpts{Alg: "ES256", Kid: rsaKID, Key: e.ec} }},
+		{name: "empty token", reason: "empty", noKeyFetch: true, token: func(*verifierEnv) string { return "" }},
+		{name: "token with a space", reason: "malformed", noKeyFetch: true, token: func(e *verifierEnv) string { return signToken(t, e.claims(), rsaOpts(e)) + " x" }},
+		{name: "token with a newline", reason: "malformed", noKeyFetch: true, token: func(e *verifierEnv) string { return signToken(t, e.claims(), rsaOpts(e)) + "\n" }},
+		{name: "validly signed token just under the size cap", accept: true, token: func(e *verifierEnv) string { return paddedToken(t, e, 0) }},
+		{name: "validly signed token just over the size cap", reason: "too large", noKeyFetch: true, token: func(e *verifierEnv) string { return paddedToken(t, e, 3) }},
+		{name: "oversized garbage", reason: "too large", noKeyFetch: true, token: func(e *verifierEnv) string { return strings.Repeat("a", 8*1024+1) }},
+		{name: "not a jwt", reason: "malformed", noKeyFetch: true, token: func(*verifierEnv) string { return "opaque-access-token-value" }},
 	}
 	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,6 +214,14 @@ func TestVerify(t *testing.T) {
 				t.Fatalf("rejection does not wrap ErrInvalidToken: %v", err)
 			}
 			text := err.Error()
+			if tc.reason != "" && text != "invalid token: "+tc.reason {
+				t.Fatalf("rejection reason = %q, want %q", text, "invalid token: "+tc.reason)
+			}
+			if tc.noKeyFetch {
+				if n := e.idp.jwksHits.Load(); n != 0 {
+					t.Fatalf("JWKS was fetched %d times, want a rejection before any key lookup", n)
+				}
+			}
 			for _, secret := range []string{rsaKID, ecKID, "unknown-kid-55aa", verifierSubject, "opaque-access-token-value"} {
 				if strings.Contains(text, secret) {
 					t.Fatalf("error text leaks a sensitive value: %q", secret)
