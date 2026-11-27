@@ -64,11 +64,15 @@ func newStatelessAuthServer(t *testing.T, withBearer bool, logger *slog.Logger, 
 		&mcp.StreamableHTTPOptions{Stateless: true, PropagateRequestCancellation: true},
 	)
 	if withBearer {
-		stub := func(context.Context, string, *http.Request) (*sdkauth.TokenInfo, error) {
+		// The stub puts the presented token into every TokenInfo field an audit
+		// record could be tempted to copy, so the never-logs-token check is
+		// meaningful: a record built from Extra or Scopes would leak it.
+		stub := func(_ context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
 			return &sdkauth.TokenInfo{
 				UserID:     "u1",
+				Scopes:     []string{token},
 				Expiration: time.Now().Add(time.Hour),
-				Extra:      map[string]any{"iss": "https://idp.test"},
+				Extra:      map[string]any{"iss": "https://idp.test", "raw": token, "jti": token},
 			}, nil
 		}
 		h = sdkauth.RequireBearerToken(stub, nil)(h)
@@ -137,7 +141,8 @@ func TestAuditLogFields(t *testing.T) {
 			callTool(t, url, tt.token, tt.tool)
 
 			if strings.Contains(buf.String(), auditTestToken) {
-				t.Fatalf("log contains the token: %s", buf.String())
+				// Do not print the buffer: it holds the leaked token.
+				t.Fatal("audit log output contains the bearer token")
 			}
 			var rec map[string]any
 			n := 0
@@ -155,7 +160,7 @@ func TestAuditLogFields(t *testing.T) {
 				}
 			}
 			if n != 1 {
-				t.Fatalf("got %d tools/call records, want 1; log: %s", n, buf.String())
+				t.Fatalf("got %d tools/call records, want 1 (%d bytes of log)", n, buf.Len())
 			}
 			if rec["level"] != "INFO" {
 				t.Errorf("level = %v, want INFO", rec["level"])
@@ -195,6 +200,6 @@ func TestAuditLogSkipsOtherMethods(t *testing.T) {
 		t.Fatalf("ListTools: %v", err)
 	}
 	if buf.Len() != 0 {
-		t.Errorf("expected no audit output for tools/list, got %s", buf.String())
+		t.Errorf("expected no audit output for tools/list, got %d bytes", buf.Len())
 	}
 }

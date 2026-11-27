@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -132,7 +135,13 @@ func doRawPost(ctx context.Context, url string, headers map[string]string, body 
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return 0, nil, nil, err
+		// The *url.Error text embeds the request URL, which can carry a dummy
+		// access_token query value. Report the method and the cause only.
+		var uerr *neturl.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return 0, nil, nil, fmt.Errorf("%s request failed: %w", req.Method, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)

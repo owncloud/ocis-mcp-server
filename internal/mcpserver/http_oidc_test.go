@@ -112,6 +112,81 @@ func TestHTTPOIDC(t *testing.T) {
 	}
 }
 
+// TestHTTPOIDCTrustedOriginIsNotAuthentication pins that the CSRF exemption for the
+// public origin does not stand in for a token.
+func TestHTTPOIDCTrustedOriginIsNotAuthentication(t *testing.T) {
+	base, fake := startOIDC(t)
+	for _, origin := range []string{base, "https://evil.example"} {
+		h := headers2026("tools/call", "ocis_get_version")
+		h["Origin"] = origin
+		status, _, _ := rawPost(t, base+"/mcp", h, callBody)
+		want := http.StatusUnauthorized
+		if origin != base {
+			want = http.StatusForbidden
+		}
+		if status != want {
+			t.Errorf("Origin %q without token: status = %d, want %d", origin, status, want)
+		}
+	}
+	if n := fake.Hits(); n != 0 {
+		t.Errorf("fake oCIS saw %d requests, want 0", n)
+	}
+}
+
+// TestHTTPOIDCRoutingVariantsNeedAuth pins that path variants of /mcp never serve a
+// request without a token, whether or not the client follows redirects.
+func TestHTTPOIDCRoutingVariantsNeedAuth(t *testing.T) {
+	noFollow := &http.Client{
+		Timeout:       10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	clients := []struct {
+		name   string
+		client *http.Client
+	}{{"follow", httpClient}, {"no-follow", noFollow}}
+	for _, path := range []string{"/mcp/", "//mcp", "/mcp//", "/MCP", "/./mcp"} {
+		for _, c := range clients {
+			t.Run(c.name+" "+path, func(t *testing.T) {
+				base, fake := startOIDC(t)
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, base+path, strings.NewReader(callBody))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for k, v := range headers2026("tools/call", "ocis_get_version") {
+					req.Header.Set(k, v)
+				}
+				resp, err := c.client.Do(req)
+				if err != nil {
+					t.Fatalf("%s request failed", req.Method)
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					t.Errorf("POST %s without token returned 200", path)
+				}
+				if n := fake.Hits(); n != 0 {
+					t.Errorf("fake oCIS saw %d requests, want 0", n)
+				}
+			})
+		}
+	}
+}
+
+// TestRawPostFailureHidesURL pins the test helper's rule that a transport failure
+// never prints the request URL, which can carry a dummy access_token value.
+func TestRawPostFailureHidesURL(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	root := srv.URL
+	target := root + "/mcp?access_token=" + validToken
+	srv.Close() // connection refused
+	_, _, _, err := doRawPost(context.Background(), target, nil, callBody)
+	if err == nil {
+		t.Fatal("request to a closed server succeeded")
+	}
+	if strings.Contains(err.Error(), "access_token") || strings.Contains(err.Error(), validToken) || strings.Contains(err.Error(), root) {
+		t.Fatal("failure message exposes the request URL")
+	}
+}
+
 func TestHTTPOIDCNoTokenNeverReachesBackend(t *testing.T) {
 	base, fake := startOIDC(t)
 	for _, m := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
