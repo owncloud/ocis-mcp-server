@@ -111,8 +111,9 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 }
 
 // buildHTTPHandler builds the authenticated HTTP handler for the configured mode. In oidc
-// mode it discovers the issuer and fetches its keys, and fails if that is not possible.
-// Errors never contain a token or secret.
+// mode it discovers the issuer (the discovery document and the jwks_uri) and fails if
+// that is not possible; the signing keys themselves are fetched lazily on the first
+// token and refreshed afterwards. Errors never contain a token or secret.
 func buildHTTPHandler(ctx context.Context, server *mcp.Server, cfg *config.Config) (http.Handler, error) {
 	a := mcpserver.HTTPAuth{Mode: cfg.HTTPAuth, Secret: cfg.HTTPSecret}
 	if cfg.HTTPAuth == mcpserver.AuthModeOIDC {
