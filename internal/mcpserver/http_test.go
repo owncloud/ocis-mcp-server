@@ -119,7 +119,7 @@ func TestHTTPSDKClients(t *testing.T) {
 	}
 }
 
-func TestHTTPMethodMethods(t *testing.T) {
+func TestHTTPUnsupportedMethods(t *testing.T) {
 	url, _ := startHTTP(t, "")
 	for _, method := range []string{http.MethodGet, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestHTTPMethodMethods(t *testing.T) {
 				t.Fatal(err)
 			}
 			req.Header.Set("Accept", "application/json, text/event-stream")
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -156,11 +156,14 @@ func TestHTTPStaleSessionID(t *testing.T) {
 }
 
 func TestHTTPHeaderValidation(t *testing.T) {
+	callBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ocis_get_version","arguments":{},` + meta2026(v2026) + `}}`
 	tests := []struct {
 		name     string
 		headers  map[string]string
 		body     string
-		wantCode float64 // 0 means do not check
+		wantCode float64 // error code expected when the request is rejected
+		wantOK   bool    // expect HTTP 200 instead of a 400 rejection
+		wantHits int     // requests the fake oCIS must have seen
 	}{
 		{
 			name:     "Mcp-Method mismatches body",
@@ -174,7 +177,27 @@ func TestHTTPHeaderValidation(t *testing.T) {
 				"MCP-Protocol-Version": v2025,
 				"Mcp-Method":           "tools/list",
 			},
-			body: `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta2026(v2026) + `}}`,
+			body:     `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta2026(v2026) + `}}`,
+			wantCode: -32020,
+		},
+		{
+			name:     "Mcp-Method mismatches tools/call body",
+			headers:  headers2026("tools/list", ""),
+			body:     callBody,
+			wantCode: -32020,
+		},
+		{
+			name:     "Mcp-Name mismatches params.name",
+			headers:  headers2026("tools/call", "ocis_get_other"),
+			body:     callBody,
+			wantCode: -32020,
+		},
+		{
+			name:     "control: matching headers reach the tool",
+			headers:  headers2026("tools/call", "ocis_get_version"),
+			body:     callBody,
+			wantOK:   true,
+			wantHits: 1,
 		},
 		{
 			name: "unsupported version",
@@ -190,16 +213,18 @@ func TestHTTPHeaderValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			url, fake := startHTTP(t, "")
 			status, _, rpc := rawPost(t, url, tt.headers, tt.body)
-			if status != http.StatusBadRequest {
-				t.Errorf("status = %d, want 400 (rpc %v)", status, rpc)
+			wantStatus := http.StatusBadRequest
+			if tt.wantOK {
+				wantStatus = http.StatusOK
 			}
-			if tt.wantCode != 0 {
-				if got := rpcErrorCode(rpc); got != tt.wantCode {
-					t.Errorf("error code = %v, want %v (rpc %v)", got, tt.wantCode, rpc)
-				}
+			if status != wantStatus {
+				t.Errorf("status = %d, want %d (rpc %v)", status, wantStatus, rpc)
 			}
-			if n := fake.Hits(); n != 0 {
-				t.Errorf("fake oCIS saw %d requests, want 0", n)
+			if got := rpcErrorCode(rpc); got != tt.wantCode {
+				t.Errorf("error code = %v, want %v (rpc %v)", got, tt.wantCode, rpc)
+			}
+			if n := fake.Hits(); n != tt.wantHits {
+				t.Errorf("fake oCIS saw %d requests, want %d", n, tt.wantHits)
 			}
 		})
 	}

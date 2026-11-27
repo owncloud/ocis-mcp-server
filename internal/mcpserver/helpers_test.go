@@ -83,6 +83,9 @@ func newTestServer(t *testing.T, educationToken string) (*mcp.Server, *fakeOCIS)
 	return New("test", client.New(cfg), cfg), fake
 }
 
+// httpClient bounds every test request so a hung handler cannot stall the suite.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 // startHTTP serves NewHTTPHandler on an httptest server and returns the /mcp URL
 // together with the fake oCIS backing it.
 func startHTTP(t *testing.T, secret string) (string, *fakeOCIS) {
@@ -114,7 +117,7 @@ func doRawPost(ctx context.Context, url string, headers map[string]string, body 
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return 0, nil, nil, err
 	}
