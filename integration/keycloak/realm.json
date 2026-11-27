@@ -1,0 +1,69 @@
+{
+  "realm": "mcp-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "clientScopes": [
+    {
+      "name": "ocis:mcp",
+      "description": "Access to the oCIS MCP server",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "mcp-audience",
+      "description": "Adds the canonical resource URI of the MCP server under test as aud",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "mcp-resource-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "http://localhost:18090/mcp",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "mcp-audience-client",
+      "name": "Integration client with the MCP audience",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dummy-integration-secret-not-for-use",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": ["mcp-audience"],
+      "optionalClientScopes": ["ocis:mcp"]
+    },
+    {
+      "clientId": "mcp-no-audience-client",
+      "name": "Integration client without the MCP audience",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dummy-integration-secret-not-for-use",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": [],
+      "optionalClientScopes": ["ocis:mcp"]
+    }
+  ]
+}
