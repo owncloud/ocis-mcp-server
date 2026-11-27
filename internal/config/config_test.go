@@ -532,6 +532,31 @@ func TestLoadHTTPOIDCSettingsCarried(t *testing.T) {
 	}
 }
 
+func TestMetadataURL(t *testing.T) {
+	const suffix = "/.well-known/oauth-protected-resource/mcp"
+	tests := []struct {
+		name string
+		pub  string
+		want string
+	}{
+		{"plain", "https://mcp.example.com", "https://mcp.example.com" + suffix},
+		{"trailing slash", "https://mcp.example.com/", "https://mcp.example.com" + suffix},
+		{"mixed case host and scheme", "HTTPS://MCP.Example.COM", "https://mcp.example.com" + suffix},
+		{"explicit default https port", "https://mcp.example.com:443", "https://mcp.example.com" + suffix},
+		{"explicit default http port", "http://localhost:80/", "http://localhost" + suffix},
+		{"non-default port kept", "https://mcp.example.com:8443", "https://mcp.example.com:8443" + suffix},
+		{"ipv6 loopback", "http://[::1]:8090", "http://[::1]:8090" + suffix},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{HTTPPublicURL: tt.pub}
+			if got := c.MetadataURL(); got != tt.want {
+				t.Errorf("MetadataURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResourceURI(t *testing.T) {
 	tests := []struct {
 		name string

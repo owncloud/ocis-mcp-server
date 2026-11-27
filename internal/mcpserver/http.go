@@ -3,8 +3,10 @@ package mcpserver
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -64,6 +66,8 @@ type HTTPAuth struct {
 func NewHTTPHandler(server *mcp.Server, a HTTPAuth) (http.Handler, error) {
 	cop := http.NewCrossOriginProtection()
 	var guard func(http.Handler) http.Handler
+	var hostGuard func(http.Handler) http.Handler
+	disableSDKHostGuard := false
 	mux := http.NewServeMux()
 
 	switch a.Mode {
@@ -98,6 +102,11 @@ func NewHTTPHandler(server *mcp.Server, a HTTPAuth) (http.Handler, error) {
 		if err := cop.AddTrustedOrigin(ru.Scheme + "://" + ru.Host); err != nil {
 			return nil, fmt.Errorf("http auth mode oidc: trusted origin: %w", err)
 		}
+		// Behind a reverse proxy that keeps the public Host, the SDK guard (loopback
+		// connection with a non-loopback Host) would reject every request, so it is
+		// replaced by an explicit allowlist that covers every route.
+		disableSDKHostGuard = true
+		hostGuard = hostAllowlist(ru)
 		guard = sdkauth.RequireBearerToken(a.Verifier, &sdkauth.RequireBearerTokenOptions{
 			ResourceMetadataURL: a.MetadataURL,
 			Scopes:              a.Scopes,
@@ -120,11 +129,54 @@ func NewHTTPHandler(server *mcp.Server, a HTTPAuth) (http.Handler, error) {
 			Stateless: true,
 			// Without this a 2026-07-28 client disconnect does not cancel the handler.
 			PropagateRequestCancellation: true,
+			// Set only in oidc mode, where hostGuard checks the Host header instead.
+			DisableLocalhostProtection: disableSDKHostGuard,
 		},
 	)
 	mux.Handle("/mcp", guard(handler))
 	// The SDK checks the Host header but not Origin. Reject cross-origin browser
 	// requests; clients that send no Origin header are unaffected.
 	// SecurityHeaders is outermost so rejections and 404s carry the headers too.
-	return middleware.SecurityHeaders(cop.Handler(mux)), nil
+	inner := cop.Handler(mux)
+	if hostGuard != nil {
+		inner = hostGuard(inner)
+	}
+	return middleware.SecurityHeaders(inner), nil
+}
+
+// hostAllowlist rejects with 403 any request whose Host is not the public host of
+// resource (with or without the scheme's default port, or the configured port), or a
+// loopback name (localhost, 127.0.0.1, [::1]) on any port. This blocks DNS rebinding
+// without depending on the connection's local address.
+func hostAllowlist(resource *url.URL) func(http.Handler) http.Handler {
+	publicHost := strings.ToLower(resource.Hostname())
+	defaultPort := "80"
+	if strings.EqualFold(resource.Scheme, "https") {
+		defaultPort = "443"
+	}
+	port := resource.Port()
+	if port == "" {
+		port = defaultPort
+	}
+	allowedPorts := map[string]bool{port: true}
+	if port == defaultPort {
+		allowedPorts[""] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			host, hostPort := r.Host, ""
+			if h, p, err := net.SplitHostPort(r.Host); err == nil {
+				host, hostPort = h, p
+			}
+			host = strings.Trim(strings.ToLower(host), "[]")
+			switch {
+			case host == "localhost", host == "127.0.0.1", host == "::1":
+			case host == publicHost && allowedPorts[hostPort]:
+			default:
+				http.Error(w, "forbidden host", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

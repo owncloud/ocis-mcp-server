@@ -334,12 +334,12 @@ func (c *Config) HTTPAuthEnabled() bool {
 	return c.HTTPAuth == "oidc" || c.HTTPAuth == "secret"
 }
 
-// ResourceURI is the canonical protected-resource identifier: lowercase scheme and host,
-// no default port, no trailing slash, ending in /mcp.
-func (c *Config) ResourceURI() string {
+// canonicalOrigin returns the public URL as lowercase scheme and host, with the default
+// port dropped and no trailing slash.
+func (c *Config) canonicalOrigin() string {
 	u, err := url.Parse(c.HTTPPublicURL)
 	if err != nil {
-		return strings.TrimRight(c.HTTPPublicURL, "/") + "/mcp"
+		return strings.TrimRight(c.HTTPPublicURL, "/")
 	}
 	scheme := strings.ToLower(u.Scheme)
 	host := strings.ToLower(u.Hostname())
@@ -353,12 +353,19 @@ func (c *Config) ResourceURI() string {
 	if port != "" {
 		host += ":" + port
 	}
-	return scheme + "://" + host + "/mcp"
+	return scheme + "://" + host
 }
 
-// MetadataURL is where the protected-resource metadata document is served.
+// ResourceURI is the canonical protected-resource identifier: lowercase scheme and host,
+// no default port, no trailing slash, ending in /mcp.
+func (c *Config) ResourceURI() string {
+	return c.canonicalOrigin() + "/mcp"
+}
+
+// MetadataURL is where the protected-resource metadata document is served. It is built
+// from the same canonical origin as ResourceURI.
 func (c *Config) MetadataURL() string {
-	return strings.TrimRight(c.HTTPPublicURL, "/") + "/.well-known/oauth-protected-resource/mcp"
+	return c.canonicalOrigin() + "/.well-known/oauth-protected-resource/mcp"
 }
 
 // IsLoopbackBind reports whether HTTPAddr binds only the loopback interface.
