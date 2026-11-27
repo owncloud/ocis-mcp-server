@@ -88,10 +88,19 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // startHTTP serves NewHTTPHandler on an httptest server and returns the /mcp URL
 // together with the fake oCIS backing it.
+// An empty secret serves in mode none, otherwise in mode secret.
 func startHTTP(t *testing.T, secret string) (string, *fakeOCIS) {
 	t.Helper()
+	a := HTTPAuth{Mode: AuthModeNone}
+	if secret != "" {
+		a = HTTPAuth{Mode: AuthModeSecret, Secret: secret}
+	}
 	s, fake := newTestServer(t, "")
-	srv := httptest.NewServer(NewHTTPHandler(s, secret))
+	h, err := NewHTTPHandler(s, a)
+	if err != nil {
+		t.Fatalf("NewHTTPHandler: %v", err)
+	}
+	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv.URL + "/mcp", fake
 }

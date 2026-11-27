@@ -3,6 +3,7 @@ package mcpserver
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
@@ -19,6 +20,7 @@ func New(version string, c *client.Client, cfg *config.Config) *mcp.Server {
 		},
 		&mcp.ServerOptions{SetCacheable: setCacheable},
 	)
+	server.AddReceivingMiddleware(AuditMiddleware(slog.Default()))
 	tools.RegisterAll(server, c, cfg)
 	return server
 }

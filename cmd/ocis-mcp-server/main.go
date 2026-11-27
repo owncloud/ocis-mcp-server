@@ -78,7 +78,16 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 			"addr", addr)
 	}
 
-	srv := mcpserver.NewHTTPServer(mcpserver.NewHTTPHandler(server, cfg.HTTPSecret))
+	if cfg.HTTPAuth == mcpserver.AuthModeOIDC {
+		slog.Error("oidc mode is wired in the next change")
+		os.Exit(1)
+	}
+	handler, err := mcpserver.NewHTTPHandler(server, mcpserver.HTTPAuth{Mode: cfg.HTTPAuth, Secret: cfg.HTTPSecret})
+	if err != nil {
+		slog.Error("HTTP handler configuration error", "error", err)
+		os.Exit(1)
+	}
+	srv := mcpserver.NewHTTPServer(handler)
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down HTTP server")

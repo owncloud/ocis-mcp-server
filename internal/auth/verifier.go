@@ -17,8 +17,8 @@ import (
 const (
 	// maxTokenBytes bounds the access token size accepted before parsing.
 	maxTokenBytes = 8 * 1024
-	// clockLeeway is the tolerated clock skew for exp and nbf.
-	clockLeeway = 60 * time.Second
+	// ClockSkew is the tolerated clock skew for exp and nbf. The HTTP layer uses the same value.
+	ClockSkew = 60 * time.Second
 )
 
 // allowedAlgs is the signature algorithm allow-list: never none, never HS*.
@@ -107,7 +107,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 		jwt.WithValidMethods(allowedAlgs),
 		jwt.WithIssuer(v.issuer),
 		jwt.WithExpirationRequired(),
-		jwt.WithLeeway(clockLeeway),
+		jwt.WithLeeway(ClockSkew),
 		jwt.WithTimeFunc(v.now),
 	)
 	claims := &verifyClaims{}
