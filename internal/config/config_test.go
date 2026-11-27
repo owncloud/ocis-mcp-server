@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,6 +16,8 @@ func clearEnv() {
 		"OCIS_MCP_OIDC_ACCESS_TOKEN", "OCIS_MCP_EDUCATION_ACCESS_TOKEN",
 		"OCIS_MCP_TRANSPORT", "OCIS_MCP_HTTP_ADDR", "OCIS_MCP_HTTP_SECRET", "OCIS_MCP_LOG_LEVEL",
 		"OCIS_MCP_INSECURE", "OCIS_MCP_TLS_SKIP_VERIFY", "OCIS_MCP_HTTP_TIMEOUT",
+		"OCIS_MCP_HTTP_AUTH", "OCIS_MCP_HTTP_PUBLIC_URL", "OCIS_MCP_HTTP_OIDC_ISSUER",
+		"OCIS_MCP_HTTP_OIDC_SCOPES", "OCIS_MCP_HTTP_OIDC_CA_FILE",
 	} {
 		_ = os.Unsetenv(k)
 	}
@@ -318,6 +322,192 @@ func TestLoadHTTP_LoopbackWithoutSecretAllowed(t *testing.T) {
 			}
 			if cfg.HTTPAuthEnabled() {
 				t.Error("HTTPAuthEnabled() = true, want false (no secret set)")
+			}
+		})
+	}
+}
+
+func TestLoadHTTPAuthModes(t *testing.T) {
+	const secretVal = "s3cr3t-value-do-not-leak"
+	const issuer = "https://idp.example.com/realms/ocis"
+	const pub = "https://mcp.example.com"
+
+	tests := []struct {
+		name        string
+		env         map[string]string
+		wantErr     string
+		wantMode    string
+		wantScopes  []string
+		wantWarnSub []string
+		wantEnabled bool
+	}{
+		{name: "inferred oidc from issuer", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_ADDR": "0.0.0.0:8090"},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
+		{name: "inferred secret", env: map[string]string{
+			"OCIS_MCP_HTTP_SECRET": secretVal, "OCIS_MCP_HTTP_ADDR": "0.0.0.0:8090"},
+			wantMode: "secret", wantEnabled: true},
+		{name: "inferred none on loopback", env: map[string]string{},
+			wantMode: "none"},
+		{name: "issuer and secret without mode", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_SECRET": secretVal},
+			wantErr: "OCIS_MCP_HTTP_AUTH"},
+		{name: "explicit oidc ignores secret and warns", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "oidc", "OCIS_MCP_HTTP_OIDC_ISSUER": issuer,
+			"OCIS_MCP_HTTP_PUBLIC_URL": pub, "OCIS_MCP_HTTP_SECRET": secretVal},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true,
+			wantWarnSub: []string{"OCIS_MCP_HTTP_SECRET"}},
+		{name: "explicit secret ignores issuer and warns", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "secret", "OCIS_MCP_HTTP_OIDC_ISSUER": issuer,
+			"OCIS_MCP_HTTP_SECRET": secretVal},
+			wantMode: "secret", wantEnabled: true,
+			wantWarnSub: []string{"OCIS_MCP_HTTP_OIDC_ISSUER"}},
+		{name: "explicit secret with empty secret", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "secret"},
+			wantErr: "OCIS_MCP_HTTP_SECRET"},
+		{name: "explicit none ignores secret and warns", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "none", "OCIS_MCP_HTTP_SECRET": secretVal},
+			wantMode:    "none",
+			wantWarnSub: []string{"OCIS_MCP_HTTP_SECRET"}},
+		{name: "oidc without issuer", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "oidc", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "oidc without public url", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "oidc", "OCIS_MCP_HTTP_OIDC_ISSUER": issuer},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "public url with path", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub + "/mcp"},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "public url with query", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub + "?a=b"},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "public url with fragment", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub + "#f"},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "public url http non-loopback", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": "http://mcp.example.com"},
+			wantErr: "OCIS_MCP_HTTP_PUBLIC_URL"},
+		{name: "public url http loopback ok", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": "http://127.0.0.1:8090"},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
+		{name: "issuer http non-loopback", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://idp.example.com", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantErr: "OCIS_MCP_HTTP_OIDC_ISSUER"},
+		{name: "issuer http loopback ok", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://localhost:8080/realms/x", "OCIS_MCP_HTTP_PUBLIC_URL": pub},
+			wantMode: "oidc", wantScopes: []string{"ocis:mcp"}, wantEnabled: true},
+		{name: "none on non-loopback bind", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "none", "OCIS_MCP_HTTP_ADDR": "0.0.0.0:8090"},
+			wantErr: "non-loopback"},
+		{name: "unknown mode", env: map[string]string{
+			"OCIS_MCP_HTTP_AUTH": "basic"},
+			wantErr: "OCIS_MCP_HTTP_AUTH"},
+		{name: "scopes comma separated", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_OIDC_SCOPES": "a:b,c:d"},
+			wantMode: "oidc", wantScopes: []string{"a:b", "c:d"}, wantEnabled: true},
+		{name: "scopes space separated", env: map[string]string{
+			"OCIS_MCP_HTTP_OIDC_ISSUER": issuer, "OCIS_MCP_HTTP_PUBLIC_URL": pub,
+			"OCIS_MCP_HTTP_OIDC_SCOPES": "a:b  c:d, e:f"},
+			wantMode: "oidc", wantScopes: []string{"a:b", "c:d", "e:f"}, wantEnabled: true},
+		{name: "stdio ignores bad http settings", env: map[string]string{
+			"OCIS_MCP_TRANSPORT": "stdio", "OCIS_MCP_HTTP_AUTH": "bogus",
+			"OCIS_MCP_HTTP_OIDC_ISSUER": "http://idp.example.com",
+			"OCIS_MCP_HTTP_PUBLIC_URL":  "not a url/path?x", "OCIS_MCP_HTTP_SECRET": secretVal},
+			wantMode: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv()
+			_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+			if _, ok := tt.env["OCIS_MCP_TRANSPORT"]; !ok {
+				_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
+			}
+			for k, v := range tt.env {
+				_ = os.Setenv(k, v)
+			}
+			t.Cleanup(clearEnv)
+
+			cfg, err := Load()
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+				if strings.Contains(err.Error(), secretVal) {
+					t.Error("error text contains the secret value")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if cfg.HTTPAuth != tt.wantMode {
+				t.Errorf("HTTPAuth = %q, want %q", cfg.HTTPAuth, tt.wantMode)
+			}
+			if cfg.HTTPAuthEnabled() != tt.wantEnabled {
+				t.Errorf("HTTPAuthEnabled() = %v, want %v", cfg.HTTPAuthEnabled(), tt.wantEnabled)
+			}
+			if tt.wantScopes != nil && !reflect.DeepEqual(cfg.HTTPOIDCScopes, tt.wantScopes) {
+				t.Errorf("HTTPOIDCScopes = %v, want %v", cfg.HTTPOIDCScopes, tt.wantScopes)
+			}
+			joined := strings.Join(cfg.Warnings, "\n")
+			if strings.Contains(joined, secretVal) {
+				t.Error("warning text contains the secret value")
+			}
+			for _, sub := range tt.wantWarnSub {
+				if !strings.Contains(joined, sub) {
+					t.Errorf("warnings %q do not mention %q", joined, sub)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadHTTPOIDCSettingsCarried(t *testing.T) {
+	clearEnv()
+	t.Cleanup(clearEnv)
+	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	_ = os.Setenv("OCIS_MCP_TRANSPORT", "http")
+	_ = os.Setenv("OCIS_MCP_HTTP_OIDC_ISSUER", "https://idp.example.com")
+	_ = os.Setenv("OCIS_MCP_HTTP_PUBLIC_URL", "https://mcp.example.com")
+	_ = os.Setenv("OCIS_MCP_HTTP_OIDC_CA_FILE", "/etc/ssl/ca.pem")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.HTTPOIDCIssuer != "https://idp.example.com" || cfg.HTTPPublicURL != "https://mcp.example.com" ||
+		cfg.HTTPOIDCCAFile != "/etc/ssl/ca.pem" {
+		t.Errorf("settings not carried: %+v", cfg)
+	}
+	if got := cfg.MetadataURL(); got != "https://mcp.example.com/.well-known/oauth-protected-resource/mcp" {
+		t.Errorf("MetadataURL() = %q", got)
+	}
+}
+
+func TestResourceURI(t *testing.T) {
+	tests := []struct {
+		name string
+		pub  string
+		want string
+	}{
+		{"plain", "https://mcp.example.com", "https://mcp.example.com/mcp"},
+		{"trailing slash", "https://mcp.example.com/", "https://mcp.example.com/mcp"},
+		{"upper-case host and scheme", "HTTPS://MCP.Example.COM", "https://mcp.example.com/mcp"},
+		{"default https port", "https://mcp.example.com:443", "https://mcp.example.com/mcp"},
+		{"default http port", "http://localhost:80", "http://localhost/mcp"},
+		{"non-default port kept", "https://mcp.example.com:8443/", "https://mcp.example.com:8443/mcp"},
+		{"ipv6 loopback", "http://[::1]:8090", "http://[::1]:8090/mcp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{HTTPPublicURL: tt.pub}
+			if got := c.ResourceURI(); got != tt.want {
+				t.Errorf("ResourceURI() = %q, want %q", got, tt.want)
 			}
 		})
 	}

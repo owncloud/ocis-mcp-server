@@ -37,10 +37,20 @@ type Config struct {
 	Transport string // OCIS_MCP_TRANSPORT ("stdio" | "http", default: "stdio")
 	HTTPAddr  string // OCIS_MCP_HTTP_ADDR (default: "127.0.0.1:8090")
 
-	// HTTPSecret is the shared secret required as `Authorization: Bearer <secret>` on the
-	// HTTP transport's /mcp endpoint. When empty, the endpoint is unauthenticated and may
-	// only be bound to a loopback address (enforced in validate).
+	// HTTPSecret is the deprecated shared secret required as `Authorization: Bearer <secret>`
+	// on the HTTP transport's /mcp endpoint in "secret" mode.
 	HTTPSecret string // OCIS_MCP_HTTP_SECRET
+
+	// Inbound auth for the HTTP transport. HTTPAuth is the resolved mode ("oidc", "secret"
+	// or "none"); it is empty when the transport is stdio, which ignores OCIS_MCP_HTTP_*.
+	HTTPAuth       string   // OCIS_MCP_HTTP_AUTH (inferred when unset)
+	HTTPPublicURL  string   // OCIS_MCP_HTTP_PUBLIC_URL (origin only)
+	HTTPOIDCIssuer string   // OCIS_MCP_HTTP_OIDC_ISSUER
+	HTTPOIDCScopes []string // OCIS_MCP_HTTP_OIDC_SCOPES (default: ocis:mcp)
+	HTTPOIDCCAFile string   // OCIS_MCP_HTTP_OIDC_CA_FILE
+
+	// Warnings collects non-fatal startup notices. They never contain setting values.
+	Warnings []string
 
 	// Logging
 	LogLevel string // OCIS_MCP_LOG_LEVEL (default: "info")
@@ -66,6 +76,10 @@ func Load() (*Config, error) {
 		Transport:            os.Getenv("OCIS_MCP_TRANSPORT"),
 		HTTPAddr:             os.Getenv("OCIS_MCP_HTTP_ADDR"),
 		HTTPSecret:           os.Getenv("OCIS_MCP_HTTP_SECRET"),
+		HTTPAuth:             strings.ToLower(strings.TrimSpace(os.Getenv("OCIS_MCP_HTTP_AUTH"))),
+		HTTPPublicURL:        strings.TrimSpace(os.Getenv("OCIS_MCP_HTTP_PUBLIC_URL")),
+		HTTPOIDCIssuer:       strings.TrimSpace(os.Getenv("OCIS_MCP_HTTP_OIDC_ISSUER")),
+		HTTPOIDCCAFile:       os.Getenv("OCIS_MCP_HTTP_OIDC_CA_FILE"),
 		LogLevel:             os.Getenv("OCIS_MCP_LOG_LEVEL"),
 		Insecure:             envBool("OCIS_MCP_INSECURE"),
 		TLSSkipVerify:        envBool("OCIS_MCP_TLS_SKIP_VERIFY"),
@@ -81,6 +95,8 @@ func Load() (*Config, error) {
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
 	}
+
+	cfg.HTTPOIDCScopes = parseScopes(os.Getenv("OCIS_MCP_HTTP_OIDC_SCOPES"))
 
 	timeout := os.Getenv("OCIS_MCP_HTTP_TIMEOUT")
 	if timeout == "" {
@@ -123,14 +139,8 @@ func (c *Config) validate() error {
 		return fmt.Errorf("OCIS_MCP_TRANSPORT must be 'stdio' or 'http', got %q", c.Transport)
 	}
 
-	// The HTTP transport invokes oCIS tools with the server's configured (often admin)
-	// credential. Without an authentication secret, anyone who can reach the listener can
-	// drive every tool. Refuse to start on a non-loopback bind unless a secret is set.
-	if c.Transport == "http" && c.HTTPSecret == "" && !isLoopbackHost(c.HTTPAddr) {
-		return fmt.Errorf(
-			"OCIS_MCP_TRANSPORT=http is bound to non-loopback address %q with no authentication: "+
-				"set OCIS_MCP_HTTP_SECRET to require an 'Authorization: Bearer' token, or bind to a "+
-				"loopback address (see README > Securing the HTTP transport)", c.HTTPAddr)
+	if err := c.resolveHTTPAuth(); err != nil {
+		return err
 	}
 
 	// Reject ambiguous auth: both app-token and OIDC set without explicit mode
@@ -140,6 +150,109 @@ func (c *Config) validate() error {
 		return fmt.Errorf("both app-token and OIDC credentials are set. Set OCIS_MCP_AUTH_MODE explicitly")
 	}
 
+	return nil
+}
+
+// parseScopes splits a comma or space separated scope list. An empty list yields the default.
+func parseScopes(raw string) []string {
+	scopes := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	if len(scopes) == 0 {
+		return []string{"ocis:mcp"}
+	}
+	return scopes
+}
+
+// resolveHTTPAuth validates the inbound HTTP auth settings and fixes HTTPAuth. The stdio
+// transport ignores every OCIS_MCP_HTTP_* setting, so nothing is validated for it.
+func (c *Config) resolveHTTPAuth() error {
+	if c.Transport != "http" {
+		c.HTTPAuth = ""
+		return nil
+	}
+
+	switch c.HTTPAuth {
+	case "":
+		switch {
+		case c.HTTPOIDCIssuer != "" && c.HTTPSecret != "":
+			return fmt.Errorf("both OCIS_MCP_HTTP_OIDC_ISSUER and OCIS_MCP_HTTP_SECRET are set. Set OCIS_MCP_HTTP_AUTH explicitly")
+		case c.HTTPOIDCIssuer != "":
+			c.HTTPAuth = "oidc"
+		case c.HTTPSecret != "":
+			c.HTTPAuth = "secret"
+		default:
+			c.HTTPAuth = "none"
+		}
+	case "oidc", "secret", "none":
+		c.warnUnusedHTTPCredentials()
+	default:
+		return fmt.Errorf("OCIS_MCP_HTTP_AUTH must be 'oidc', 'secret' or 'none', got %q", c.HTTPAuth)
+	}
+
+	switch c.HTTPAuth {
+	case "oidc":
+		if c.HTTPOIDCIssuer == "" {
+			return fmt.Errorf("OCIS_MCP_HTTP_AUTH=oidc requires OCIS_MCP_HTTP_OIDC_ISSUER")
+		}
+		if c.HTTPPublicURL == "" {
+			return fmt.Errorf("OCIS_MCP_HTTP_AUTH=oidc requires OCIS_MCP_HTTP_PUBLIC_URL")
+		}
+		if err := checkSecureURL("OCIS_MCP_HTTP_OIDC_ISSUER", c.HTTPOIDCIssuer, false); err != nil {
+			return err
+		}
+		if err := checkSecureURL("OCIS_MCP_HTTP_PUBLIC_URL", c.HTTPPublicURL, true); err != nil {
+			return err
+		}
+	case "secret":
+		if c.HTTPSecret == "" {
+			return fmt.Errorf("OCIS_MCP_HTTP_AUTH=secret requires OCIS_MCP_HTTP_SECRET")
+		}
+		c.Warnings = append(c.Warnings,
+			"OCIS_MCP_HTTP_AUTH=secret is deprecated and will be removed in a future major version; use OCIS_MCP_HTTP_AUTH=oidc")
+	case "none":
+		if !isLoopbackHost(c.HTTPAddr) {
+			return fmt.Errorf(
+				"OCIS_MCP_TRANSPORT=http is bound to non-loopback address %q with no authentication: "+
+					"set OCIS_MCP_HTTP_AUTH=oidc (or the deprecated secret mode), or bind to a "+
+					"loopback address (see README > Securing the HTTP transport)", c.HTTPAddr)
+		}
+	}
+	return nil
+}
+
+// warnUnusedHTTPCredentials adds a warning for each credential setting the explicit mode ignores.
+func (c *Config) warnUnusedHTTPCredentials() {
+	if c.HTTPAuth != "oidc" && c.HTTPOIDCIssuer != "" {
+		c.Warnings = append(c.Warnings,
+			fmt.Sprintf("OCIS_MCP_HTTP_OIDC_ISSUER is set but ignored because OCIS_MCP_HTTP_AUTH=%s", c.HTTPAuth))
+	}
+	if c.HTTPAuth != "secret" && c.HTTPSecret != "" {
+		c.Warnings = append(c.Warnings,
+			fmt.Sprintf("OCIS_MCP_HTTP_SECRET is set but ignored because OCIS_MCP_HTTP_AUTH=%s", c.HTTPAuth))
+	}
+}
+
+// checkSecureURL requires https, or plain http for a loopback host. With originOnly the URL
+// must carry no path, query or fragment. The URL itself is never echoed in the error.
+func checkSecureURL(name, raw string, originOnly bool) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%s must be an absolute http(s) URL", name)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+	case "http":
+		if !isLoopbackHost(u.Host) {
+			return fmt.Errorf("%s must use https (plain http is only allowed for a loopback host)", name)
+		}
+	default:
+		return fmt.Errorf("%s must use https (plain http is only allowed for a loopback host)", name)
+	}
+	if originOnly {
+		if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+			strings.Contains(raw, "#") || u.User != nil {
+			return fmt.Errorf("%s must be an origin (scheme, host, optional port) with no path, query or fragment", name)
+		}
+	}
 	return nil
 }
 
@@ -175,7 +288,34 @@ func (c *Config) OcisBaseURL() string {
 
 // HTTPAuthEnabled reports whether the HTTP transport requires a bearer token.
 func (c *Config) HTTPAuthEnabled() bool {
-	return c.HTTPSecret != ""
+	return c.HTTPAuth == "oidc" || c.HTTPAuth == "secret"
+}
+
+// ResourceURI is the canonical protected-resource identifier: lowercase scheme and host,
+// no default port, no trailing slash, ending in /mcp.
+func (c *Config) ResourceURI() string {
+	u, err := url.Parse(c.HTTPPublicURL)
+	if err != nil {
+		return strings.TrimRight(c.HTTPPublicURL, "/") + "/mcp"
+	}
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.ToLower(u.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return scheme + "://" + host + "/mcp"
+}
+
+// MetadataURL is where the protected-resource metadata document is served.
+func (c *Config) MetadataURL() string {
+	return strings.TrimRight(c.HTTPPublicURL, "/") + "/.well-known/oauth-protected-resource/mcp"
 }
 
 // IsLoopbackBind reports whether HTTPAddr binds only the loopback interface.
