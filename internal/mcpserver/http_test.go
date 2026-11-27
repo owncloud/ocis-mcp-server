@@ -60,6 +60,40 @@ func TestHTTP2026Request(t *testing.T) {
 	}
 }
 
+func TestCacheHints(t *testing.T) {
+	tests := []struct {
+		method    string
+		name      string
+		params    string
+		wantTTL   float64
+		wantScope string
+	}{
+		{"tools/list", "", "", 300000, "public"},
+		{"prompts/list", "", "", 300000, "public"},
+		{"resources/list", "", "", 300000, "public"},
+		{"resources/templates/list", "", "", 300000, "public"},
+		{"server/discover", "", "", 300000, "public"},
+		{"resources/read", "ocis://capabilities", `"uri":"ocis://capabilities",`, 30000, "private"},
+	}
+	url, _ := startHTTP(t, "")
+	for _, tt := range tests {
+		t.Run(tt.method, func(t *testing.T) {
+			body := `{"jsonrpc":"2.0","id":1,"method":"` + tt.method + `","params":{` + tt.params + meta2026(v2026) + `}}`
+			status, _, rpc := rawPost(t, url, headers2026(tt.method, tt.name), body)
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, rpc = %v", status, rpc)
+			}
+			res := rpcResult(t, rpc)
+			if got, _ := res["ttlMs"].(float64); got != tt.wantTTL {
+				t.Errorf("ttlMs = %v, want %v", res["ttlMs"], tt.wantTTL)
+			}
+			if got := res["cacheScope"]; got != tt.wantScope {
+				t.Errorf("cacheScope = %v, want %s", got, tt.wantScope)
+			}
+		})
+	}
+}
+
 func TestHTTPServerDiscover(t *testing.T) {
 	url, _ := startHTTP(t, "")
 	body := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` + meta2026(v2026) + `}}`

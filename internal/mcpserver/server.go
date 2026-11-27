@@ -2,6 +2,8 @@
 package mcpserver
 
 import (
+	"context"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 	"github.com/owncloud/ocis-mcp-server/internal/config"
@@ -15,8 +17,26 @@ func New(version string, c *client.Client, cfg *config.Config) *mcp.Server {
 			Name:    "ocis-mcp-server",
 			Version: version,
 		},
-		nil,
+		&mcp.ServerOptions{SetCacheable: setCacheable},
 	)
 	tools.RegisterAll(server, c, cfg)
 	return server
+}
+
+// Cache hint values, in milliseconds. Listings and discovery change only when
+// the server is redeployed; resource bodies reflect live oCIS state and may
+// differ per caller, so they get a short, private TTL.
+const (
+	listTTLMs     = 300000
+	resourceTTLMs = 30000
+)
+
+// setCacheable fills the 2026-07-28 ttlMs and cacheScope fields. The SDK may
+// call it with the server lock held, so it must not call back into the server.
+func setCacheable(_ context.Context, req mcp.Request, c *mcp.Cacheable) {
+	if _, ok := req.GetParams().(*mcp.ReadResourceParams); ok {
+		c.TTLMs, c.CacheScope = resourceTTLMs, "private"
+		return
+	}
+	c.TTLMs, c.CacheScope = listTTLMs, "public"
 }

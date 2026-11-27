@@ -3,10 +3,60 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestReadMissingResource(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+	}{
+		{"unregistered ocis uri", "ocis://does-not-exist"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := newTestServer(t, "")
+			cs := connectInMemory(t, s, "")
+			_, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: tt.uri})
+			if err == nil {
+				t.Fatal("ReadResource returned no error")
+			}
+			var wire *jsonrpc.Error
+			if !errors.As(err, &wire) {
+				t.Fatalf("error %T (%v) is not a *jsonrpc.Error", err, err)
+			}
+			if wire.Code != jsonrpc.CodeInvalidParams {
+				t.Errorf("code = %d, want %d", wire.Code, jsonrpc.CodeInvalidParams)
+			}
+		})
+	}
+}
+
+func TestCallUnknownTool(t *testing.T) {
+	tests := []struct {
+		name string
+		tool string
+	}{
+		{"unregistered tool", "no_such_tool"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, fake := newTestServer(t, "")
+			cs := connectInMemory(t, s, "")
+			res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tt.tool})
+			if err == nil && (res == nil || !res.IsError) {
+				t.Fatalf("unknown tool succeeded: %+v", res)
+			}
+			if fake.Hits() != 0 {
+				t.Errorf("fake oCIS hits = %d, want 0", fake.Hits())
+			}
+		})
+	}
+}
 
 func TestRegistrationCounts(t *testing.T) {
 	tests := []struct {
