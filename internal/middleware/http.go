@@ -25,17 +25,14 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // SHA-256 hashed before comparison, which keeps the check independent of the secret's value
 // and length (so it leaks neither via timing).
 //
-// When secret is empty the middleware is a pass-through and the endpoint is left
-// unauthenticated. That is only safe on a trusted loopback bind; the configuration layer
-// refuses to start an HTTP transport on a non-loopback address without a secret.
+// It fails closed: an empty secret rejects every request with 401, so a caller that
+// forgets to check the secret can never leave the endpoint open. Callers that want no
+// authentication must not install this middleware at all.
 func RequireBearer(secret string) func(http.Handler) http.Handler {
-	if secret == "" {
-		return func(next http.Handler) http.Handler { return next }
-	}
 	want := sha256.Sum256([]byte(secret))
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !validBearer(r, want) {
+			if secret == "" || !validBearer(r, want) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="ocis-mcp-server"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
