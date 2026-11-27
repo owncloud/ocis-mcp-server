@@ -45,7 +45,7 @@ func isLoopbackHost(host string) bool {
 }
 
 // schemeAllowed reports whether u may be fetched: https always, http only for
-// a loopback host.
+// a loopback host. Redirects apply the stricter rule in checkIssuerRedirect.
 func schemeAllowed(u *url.URL) bool {
 	switch strings.ToLower(u.Scheme) {
 	case "https":
@@ -73,8 +73,8 @@ func parseSecureURL(raw, what string) (*url.URL, error) {
 
 // NewIssuerHTTPClient returns the HTTP client used to talk to the issuer. It
 // has a 10 s timeout, verifies TLS against the system roots plus the PEM
-// bundle in caFile when given, and refuses redirects that leave https (except
-// to a loopback host) or exceed three hops.
+// bundle in caFile when given, and refuses redirects that leave https (there is
+// no loopback exception) or exceed three hops.
 func NewIssuerHTTPClient(caFile string) (*http.Client, error) {
 	tr, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -103,12 +103,18 @@ func NewIssuerHTTPClient(caFile string) (*http.Client, error) {
 	}, nil
 }
 
+// checkIssuerRedirect follows a redirect only when the target passes the same
+// checks as a configured URL and does not downgrade: a request that was made
+// over https may only be redirected to https, loopback or not.
 func checkIssuerRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) > maxRedirects {
 		return fmt.Errorf("stopped after %d redirects", maxRedirects)
 	}
-	if !schemeAllowed(req.URL) {
-		return errors.New("redirect target must use https (plain http is allowed for a loopback host only)")
+	if _, err := parseSecureURL(req.URL.String(), "redirect target"); err != nil {
+		return err
+	}
+	if n := len(via); n > 0 && strings.EqualFold(via[n-1].URL.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+		return errors.New("redirect target must use https because the redirecting URL does")
 	}
 	return nil
 }
@@ -132,9 +138,13 @@ func getJSON(ctx context.Context, c *http.Client, rawURL string, v any) error {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	// Belt and braces: a client without our redirect policy must not end up on http.
-	if resp.Request != nil && resp.Request.URL != nil && !schemeAllowed(resp.Request.URL) {
-		return errors.New("response came from a redirect to a non-https URL")
+	// Belt and braces: a client without our redirect policy must not end up on http
+	// after asking for https, nor on a scheme the rule does not allow.
+	if resp.Request != nil && resp.Request.URL != nil {
+		final := resp.Request.URL
+		if !schemeAllowed(final) || (strings.EqualFold(req.URL.Scheme, "https") && !strings.EqualFold(final.Scheme, "https")) {
+			return errors.New("response came from a redirect to a non-https URL")
+		}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return &statusError{code: resp.StatusCode}
@@ -152,14 +162,30 @@ func getJSON(ctx context.Context, c *http.Client, rawURL string, v any) error {
 	return nil
 }
 
-// trimOneSlash removes a single trailing slash.
+// checkJWKSURI applies the https-or-loopback rule to raw and, when the issuer
+// itself is https, requires https: a loopback http exception is only for an
+// issuer that is plain http on loopback too.
+func checkJWKSURI(issuer *url.URL, raw string) error {
+	u, err := parseSecureURL(raw, "jwks_uri")
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(issuer.Scheme, "https") && !strings.EqualFold(u.Scheme, "https") {
+		return errors.New("jwks_uri must use https because the issuer does")
+	}
+	return nil
+}
+
+// trimOneSlash removes a single trailing slash. It only builds well-known URLs;
+// the issuer comparison stays exact.
 func trimOneSlash(s string) string { return strings.TrimSuffix(s, "/") }
 
 // Discover resolves the JWKS URI of issuer. It tries OIDC Discovery first and
 // RFC 8414 second (only when the first answers with a non-200 status). The
-// discovered issuer must equal the configured one, tolerating a single
-// trailing slash difference, and both the issuer and the jwks_uri must be
-// https, except plain http for a loopback host.
+// discovered issuer must equal the configured one exactly, because token
+// verification compares the iss claim against the configured string. The issuer
+// and the jwks_uri must be https, except plain http for a loopback host; an
+// https issuer never accepts a plain http jwks_uri, not even on loopback.
 func Discover(ctx context.Context, c *http.Client, issuer string) (jwksURI string, err error) {
 	if c == nil {
 		return "", errors.New("discovery needs an HTTP client")
@@ -195,13 +221,13 @@ func Discover(ctx context.Context, c *http.Client, issuer string) (jwksURI strin
 			}
 			return "", fmt.Errorf("discovery (oauth-authorization-server): %w", err)
 		}
-		if trimOneSlash(doc.Issuer) != trimOneSlash(issuer) {
+		if doc.Issuer != issuer {
 			return "", errors.New("discovered issuer does not match the configured issuer")
 		}
 		if strings.TrimSpace(doc.JWKSURI) == "" {
 			return "", errors.New("discovery document has no jwks_uri")
 		}
-		if _, err := parseSecureURL(doc.JWKSURI, "jwks_uri"); err != nil {
+		if err := checkJWKSURI(iss, doc.JWKSURI); err != nil {
 			return "", err
 		}
 		return doc.JWKSURI, nil

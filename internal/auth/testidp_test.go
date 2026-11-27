@@ -55,6 +55,7 @@ type idpConfig struct {
 	discoveryMode   string // "", "huge", "redirect-http"
 	jwksMode        string // "", "5xx", "hang", "huge", "redirect-http"
 	jwksDelay       time.Duration
+	redirectTo      string // target of the "redirect-http" modes; defaults to a non-loopback http URL
 }
 
 // idpOptions selects how the fake IdP is served.
@@ -239,7 +240,7 @@ func (i *testIdP) serveDiscovery(hits *atomic.Int64, status func(idpConfig) int)
 			writeHuge(w, `{"issuer":"`+i.Issuer()+`","jwks_uri":"`+i.JWKSURL()+`","pad":"`)
 			return
 		case "redirect-http":
-			http.Redirect(w, r, "http://idp.example.test/.well-known/openid-configuration", http.StatusFound)
+			http.Redirect(w, r, orDefault(c.redirectTo, "http://idp.example.test/.well-known/openid-configuration"), http.StatusFound)
 			return
 		}
 		issuer, jwksURI := i.Issuer(), i.JWKSURL()
@@ -274,11 +275,35 @@ func (i *testIdP) serveJWKS(w http.ResponseWriter, r *http.Request) {
 		writeHuge(w, `{"keys":[],"pad":"`)
 		return
 	case "redirect-http":
-		http.Redirect(w, r, "http://idp.example.test/jwks", http.StatusFound)
+		http.Redirect(w, r, orDefault(c.redirectTo, "http://idp.example.test/jwks"), http.StatusFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(i.jwksDocument())
+}
+
+func orDefault(v, def string) string {
+	if v != "" {
+		return v
+	}
+	return def
+}
+
+// newHTTPLoopbackTarget starts a plain http loopback IdP that really answers
+// discovery and JWKS requests, so a redirect that is wrongly followed to it
+// would succeed. Its discovery document advertises issuer and jwksURI, and it
+// publishes an RSA key for each kid.
+func newHTTPLoopbackTarget(t *testing.T, issuer, jwksURI string, kids ...string) *testIdP {
+	t.Helper()
+	target := newTestIdP(t, idpOptions{plainHTTP: true})
+	for _, kid := range kids {
+		target.AddRSAKey(t, kid)
+	}
+	target.Set(func(c *idpConfig) {
+		c.issuerOverride = issuer
+		c.jwksURIOverride = jwksURI
+	})
+	return target
 }
 
 // writeHuge writes a syntactically valid JSON document of about 2 MiB.

@@ -12,12 +12,13 @@ import (
 
 func TestDiscover(t *testing.T) {
 	tests := []struct {
-		name    string
-		opts    idpOptions
-		setup   func(*testIdP)
-		issuer  func(*testIdP) string // defaults to idp.Issuer()
-		wantErr string                // empty means success
-		check   func(*testing.T, *testIdP)
+		name     string
+		opts     idpOptions
+		setup    func(*testIdP)
+		issuer   func(*testIdP) string // defaults to idp.Issuer()
+		wantErr  string                // empty means success
+		wantJWKS string                // expected jwks_uri; defaults to idp.JWKSURL()
+		check    func(*testing.T, *testIdP)
 	}{
 		{
 			name: "OIDC document ok",
@@ -63,12 +64,19 @@ func TestDiscover(t *testing.T) {
 			wantErr: "issuer",
 		},
 		{
-			name:   "configured issuer has trailing slash",
-			issuer: func(i *testIdP) string { return i.Issuer() + "/" },
+			name:    "configured issuer has trailing slash, discovered has none",
+			issuer:  func(i *testIdP) string { return i.Issuer() + "/" },
+			wantErr: "issuer",
 		},
 		{
-			name:  "discovered issuer has trailing slash",
-			setup: func(i *testIdP) { i.Set(func(c *idpConfig) { c.issuerOverride = i.Issuer() + "/" }) },
+			name:    "discovered issuer has trailing slash, configured has none",
+			setup:   func(i *testIdP) { i.Set(func(c *idpConfig) { c.issuerOverride = i.Issuer() + "/" }) },
+			wantErr: "issuer",
+		},
+		{
+			name:   "both issuers have the same trailing slash",
+			issuer: func(i *testIdP) string { return i.Issuer() + "/" },
+			setup:  func(i *testIdP) { i.Set(func(c *idpConfig) { c.issuerOverride = i.Issuer() + "/" }) },
 		},
 		{
 			name:    "two trailing slashes are not tolerated",
@@ -100,6 +108,24 @@ func TestDiscover(t *testing.T) {
 			wantErr: "jwks_uri",
 		},
 		{
+			name:    "https issuer with an http loopback jwks_uri rejected",
+			setup:   func(i *testIdP) { i.Set(func(c *idpConfig) { c.jwksURIOverride = "http://127.0.0.1:9/jwks" }) },
+			wantErr: "jwks_uri must use https",
+		},
+		{
+			name:    "https issuer with an http localhost jwks_uri rejected",
+			setup:   func(i *testIdP) { i.Set(func(c *idpConfig) { c.jwksURIOverride = "http://localhost:9/jwks" }) },
+			wantErr: "jwks_uri must use https",
+		},
+		{
+			name: "http loopback issuer with an http loopback jwks_uri allowed",
+			opts: idpOptions{plainHTTP: true},
+			setup: func(i *testIdP) {
+				i.Set(func(c *idpConfig) { c.jwksURIOverride = "http://127.0.0.1:9/jwks" })
+			},
+			wantJWKS: "http://127.0.0.1:9/jwks",
+		},
+		{
 			name:    "jwks_uri missing rejected",
 			setup:   func(i *testIdP) { i.Set(func(c *idpConfig) { c.jwksURIOverride = " " }) },
 			wantErr: "jwks_uri",
@@ -110,9 +136,20 @@ func TestDiscover(t *testing.T) {
 			wantErr: "1 MiB",
 		},
 		{
-			name:    "redirect from https to http rejected",
+			name: "redirect from https to an answering http loopback server rejected",
+			setup: func(i *testIdP) {
+				target := newHTTPLoopbackTarget(t, i.Issuer(), i.JWKSURL())
+				i.Set(func(c *idpConfig) {
+					c.discoveryMode = "redirect-http"
+					c.redirectTo = target.Issuer() + "/.well-known/openid-configuration"
+				})
+			},
+			wantErr: "redirect target must use https",
+		},
+		{
+			name:    "redirect from https to http on a non-loopback host rejected",
 			setup:   func(i *testIdP) { i.Set(func(c *idpConfig) { c.discoveryMode = "redirect-http" }) },
-			wantErr: "redirect",
+			wantErr: "redirect target must use https",
 		},
 	}
 	for _, tt := range tests {
@@ -141,8 +178,12 @@ func TestDiscover(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover: %v", err)
 			}
-			if got != idp.JWKSURL() {
-				t.Fatalf("jwks uri = %q, want %q", got, idp.JWKSURL())
+			want := idp.JWKSURL()
+			if tt.wantJWKS != "" {
+				want = tt.wantJWKS
+			}
+			if got != want {
+				t.Fatalf("jwks uri = %q, want %q", got, want)
 			}
 			if tt.check != nil {
 				tt.check(t, idp)
@@ -237,33 +278,50 @@ func TestIssuerClientRedirectPolicy(t *testing.T) {
 		}
 		return &http.Request{URL: u}
 	}
-	via := func(n int) []*http.Request {
+	via := func(source string, n int) []*http.Request {
 		out := make([]*http.Request, n)
 		for i := range out {
-			out[i] = req("https://idp.example.com/start")
+			out[i] = req(source)
 		}
 		return out
 	}
+	const (
+		httpsSource    = "https://idp.example.com/start"
+		loopbackSource = "http://127.0.0.1:8080/start"
+	)
 	tests := []struct {
 		name    string
+		source  string
 		target  string
 		hops    int
-		wantErr bool
+		wantErr string // empty means the redirect is followed
 	}{
-		{"https target", "https://idp.example.com/next", 1, false},
-		{"http non-loopback target", "http://idp.example.com/next", 1, true},
-		{"http loopback ip target", "http://127.0.0.1:8080/next", 1, false},
-		{"http localhost target any case", "http://LocalHost:8080/next", 1, false},
-		{"http ipv6 loopback target", "http://[::1]:8080/next", 1, false},
-		{"third redirect still allowed", "https://idp.example.com/next", 3, false},
-		{"fourth redirect refused", "https://idp.example.com/next", 4, true},
-		{"other scheme refused", "ftp://idp.example.com/next", 1, true},
+		{"https to https", httpsSource, "https://idp.example.com/next", 1, ""},
+		{"https to http non-loopback", httpsSource, "http://idp.example.com/next", 1, "https"},
+		{"https to http loopback ip", httpsSource, "http://127.0.0.1:8080/next", 1, "https"},
+		{"https to http localhost any case", httpsSource, "http://LocalHost:8080/next", 1, "https"},
+		{"https to http ipv6 loopback", httpsSource, "http://[::1]:8080/next", 1, "https"},
+		{"https to other scheme", httpsSource, "ftp://idp.example.com/next", 1, "https"},
+		{"https to target with userinfo", httpsSource, "https://user:pw@idp.example.com/next", 1, "credentials"},
+		{"https to target with fragment", httpsSource, "https://idp.example.com/next#frag", 1, "fragment"},
+		{"https to target without host", httpsSource, "https:///next", 1, "absolute"},
+		{"loopback http to loopback http", loopbackSource, "http://127.0.0.1:8080/next", 1, ""},
+		{"loopback http to https", loopbackSource, "https://idp.example.com/next", 1, ""},
+		{"loopback http to http non-loopback", loopbackSource, "http://idp.example.com/next", 1, "https"},
+		{"third redirect still allowed", httpsSource, "https://idp.example.com/next", 3, ""},
+		{"fourth redirect refused", httpsSource, "https://idp.example.com/next", 4, "redirects"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := c.CheckRedirect(req(tt.target), via(tt.hops))
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("CheckRedirect error = %v, wantErr %v", err, tt.wantErr)
+			err := c.CheckRedirect(req(tt.target), via(tt.source, tt.hops))
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("CheckRedirect = %v, want the redirect followed", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("CheckRedirect error = %v, want it to contain %q", err, tt.wantErr)
 			}
 		})
 	}

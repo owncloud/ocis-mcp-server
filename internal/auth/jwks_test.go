@@ -180,7 +180,13 @@ func TestKeySetServesStaleThenFails(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			idp, ks, clock := newWarmKeySet(t)
 			ctx := context.Background()
-			idp.Set(func(c *idpConfig) { c.jwksMode = mode })
+			idp.Set(func(c *idpConfig) {
+				c.jwksMode = mode
+				if mode == "redirect-http" {
+					// An answering loopback server: a followed redirect would refresh the set.
+					c.redirectTo = newHTTPLoopbackTarget(t, "", "", "a").JWKSURL()
+				}
+			})
 
 			clock.Advance(2 * time.Hour)
 			if _, err := ks.Key(ctx, "a"); err != nil {
@@ -249,7 +255,12 @@ func TestKeySetColdStartFailure(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			idp := newTestIdP(t, idpOptions{})
 			idp.AddRSAKey(t, "a")
-			idp.Set(func(c *idpConfig) { c.jwksMode = mode })
+			idp.Set(func(c *idpConfig) {
+				c.jwksMode = mode
+				if mode == "redirect-http" {
+					c.redirectTo = newHTTPLoopbackTarget(t, "", "", "a").JWKSURL()
+				}
+			})
 			ks := NewKeySet(idp.Client(t), idp.JWKSURL(), newFakeClock().Now)
 			_, err := ks.Key(context.Background(), "a")
 			if !errors.Is(err, ErrKeysUnavailable) {
@@ -324,9 +335,18 @@ func TestKeySetHangingEndpoint(t *testing.T) {
 
 func TestKeySetRejectsInsecureURL(t *testing.T) {
 	idp := newTestIdP(t, idpOptions{})
-	ks := NewKeySet(idp.Client(t), "http://idp.example.com/jwks", newFakeClock().Now)
-	if _, err := ks.Key(context.Background(), "a"); !errors.Is(err, ErrKeysUnavailable) {
+	// The fetch must be refused by the scheme rule before any connection is
+	// attempted, so the failing host is unreachable on purpose.
+	ks := NewKeySet(idp.Client(t), "http://idp.example.invalid/jwks", newFakeClock().Now)
+	_, err := ks.Key(context.Background(), "a")
+	if !errors.Is(err, ErrKeysUnavailable) {
 		t.Fatalf("error = %v, want ErrKeysUnavailable", err)
+	}
+	if !strings.Contains(err.Error(), "jwks_uri must use https") {
+		t.Fatalf("error %q does not name the https rule", err)
+	}
+	if strings.Contains(err.Error(), "lookup") || strings.Contains(err.Error(), "dial") {
+		t.Fatalf("error %q shows a connection was attempted", err)
 	}
 }
 
