@@ -48,8 +48,15 @@ func TestCallUnknownTool(t *testing.T) {
 			s, fake := newTestServer(t, "")
 			cs := connectInMemory(t, s, "")
 			res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tt.tool})
-			if err == nil && (res == nil || !res.IsError) {
-				t.Fatalf("unknown tool succeeded: %+v", res)
+			if err == nil {
+				t.Fatalf("unknown tool returned no error, result: %+v", res)
+			}
+			var wire *jsonrpc.Error
+			if !errors.As(err, &wire) {
+				t.Fatalf("error %T (%v) is not a *jsonrpc.Error", err, err)
+			}
+			if wire.Code != jsonrpc.CodeInvalidParams {
+				t.Errorf("code = %d, want %d (message %q)", wire.Code, jsonrpc.CodeInvalidParams, wire.Message)
 			}
 			if fake.Hits() != 0 {
 				t.Errorf("fake oCIS hits = %d, want 0", fake.Hits())
