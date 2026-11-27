@@ -34,8 +34,9 @@ func NewHTTPHandler(server *mcp.Server, secret string) http.Handler {
 		},
 	)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(secret)(handler)))
+	mux.Handle("/mcp", middleware.RequireBearer(secret)(handler))
 	// The SDK checks the Host header but not Origin. Reject cross-origin browser
 	// requests; clients that send no Origin header are unaffected.
-	return http.NewCrossOriginProtection().Handler(mux)
+	// SecurityHeaders is outermost so rejections and 404s carry the headers too.
+	return middleware.SecurityHeaders(http.NewCrossOriginProtection().Handler(mux))
 }

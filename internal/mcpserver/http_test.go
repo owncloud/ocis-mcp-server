@@ -327,6 +327,43 @@ func TestHTTPRejects(t *testing.T) {
 	}
 }
 
+func TestHTTPSecurityHeadersEverywhere(t *testing.T) {
+	small := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta2026(v2026) + `}}`
+	tests := []struct {
+		name       string
+		path       string
+		extra      map[string]string
+		wantStatus int
+	}{
+		{"cross-origin 403", "/mcp", map[string]string{"Origin": "https://evil.example"}, http.StatusForbidden},
+		{"unknown path 404", "/nope", nil, http.StatusNotFound},
+		{"normal /mcp response", "/mcp", nil, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url, _ := startHTTP(t, "")
+			h := headers2026("tools/list", "")
+			for k, v := range tt.extra {
+				h[k] = v
+			}
+			target := strings.TrimSuffix(url, "/mcp") + tt.path
+			status, hdr, _, err := doRawPost(context.Background(), target, h, small)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", status, tt.wantStatus)
+			}
+			if got := hdr.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+			if got := hdr.Get("X-Frame-Options"); got != "DENY" {
+				t.Errorf("X-Frame-Options = %q, want DENY", got)
+			}
+		})
+	}
+}
+
 func TestHTTPClientDisconnectCancels(t *testing.T) {
 	url, fake := startHTTP(t, "")
 	received := make(chan struct{})
