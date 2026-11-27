@@ -3,6 +3,7 @@ module github.com/owncloud/ocis-mcp-server
 go 1.26.2
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/sync v0.20.0
 )
