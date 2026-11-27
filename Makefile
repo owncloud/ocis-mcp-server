@@ -1,4 +1,4 @@
-.PHONY: build test lint cover clean docker-build release-dry-run
+.PHONY: build test lint cover clean docker-build release-dry-run reuse
 
 BINARY  := ocis-mcp-server
 MODULE  := github.com/owncloud/ocis-mcp-server
@@ -29,3 +29,7 @@ docker-build:
 
 release-dry-run:
 	goreleaser release --snapshot --clean
+
+# Needs the reuse tool on PATH (pipx install 'reuse[charset-normalizer]').
+reuse:
+	reuse lint

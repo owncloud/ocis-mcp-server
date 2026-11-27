@@ -62,3 +62,15 @@ jobs:
 
       - name: golangci-lint
         run: golangci-lint run ./...
+
+  reuse:
+    name: REUSE
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: REUSE lint
+        run: pipx run --spec 'reuse[charset-normalizer]==6.3.0' reuse lint
