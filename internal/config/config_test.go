@@ -11,6 +11,8 @@ import (
 func clearEnv() {
 	for _, k := range []string{
 		"OCIS_MCP_OCIS_URL", "OCIS_MCP_AUTH_MODE",
+		"OCIS_MCP_OCIS_AUTH_MODE", "OCIS_MCP_OCIS_APP_TOKEN_USER",
+		"OCIS_MCP_OCIS_APP_TOKEN_VALUE", "OCIS_MCP_OCIS_BEARER_TOKEN",
 		"OCIS_MCP_APP_TOKEN_USER", "OCIS_MCP_APP_TOKEN_VALUE",
 		"OCIS_MCP_OIDC_ISSUER", "OCIS_MCP_OIDC_CLIENT_ID", "OCIS_MCP_OIDC_CLIENT_SECRET",
 		"OCIS_MCP_OIDC_ACCESS_TOKEN", "OCIS_MCP_EDUCATION_ACCESS_TOKEN",
@@ -26,8 +28,8 @@ func clearEnv() {
 func TestLoadMinimalConfig(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
 
 	cfg, err := Load()
 	if err != nil {
@@ -61,8 +63,8 @@ func TestLoadMissingURL(t *testing.T) {
 func TestLoadHTTPWithoutInsecure(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
 
 	_, err := Load()
 	if err == nil {
@@ -73,8 +75,8 @@ func TestLoadHTTPWithoutInsecure(t *testing.T) {
 func TestLoadHTTPWithInsecure(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "http://insecure.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
 	_ = os.Setenv("OCIS_MCP_INSECURE", "true")
 
 	cfg, err := Load()
@@ -89,8 +91,8 @@ func TestLoadHTTPWithInsecure(t *testing.T) {
 func TestLoadInvalidTransport(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
 	_ = os.Setenv("OCIS_MCP_TRANSPORT", "grpc")
 
 	_, err := Load()
@@ -102,9 +104,9 @@ func TestLoadInvalidTransport(t *testing.T) {
 func TestLoadAmbiguousAuth(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_BEARER_TOKEN", "bearer-token")
 
 	_, err := Load()
 	if err == nil {
@@ -115,31 +117,31 @@ func TestLoadAmbiguousAuth(t *testing.T) {
 func TestLoadExplicitAuthMode(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
-	_ = os.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
-	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
-	_ = os.Setenv("OCIS_MCP_AUTH_MODE", "oidc")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_USER", "admin")
+	_ = os.Setenv("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "tok")
+	_ = os.Setenv("OCIS_MCP_OCIS_BEARER_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_OCIS_AUTH_MODE", "static-bearer")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if cfg.AuthMode != "oidc" {
-		t.Errorf("AuthMode = %q, want oidc", cfg.AuthMode)
+	if cfg.AuthMode != "static-bearer" {
+		t.Errorf("AuthMode = %q, want static-bearer", cfg.AuthMode)
 	}
 }
 
-func TestLoadOIDCAutoDetect(t *testing.T) {
+func TestLoadBearerAutoDetect(t *testing.T) {
 	clearEnv()
 	_ = os.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
-	_ = os.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+	_ = os.Setenv("OCIS_MCP_OCIS_BEARER_TOKEN", "bearer-token")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if cfg.AuthMode != "oidc" {
-		t.Errorf("AuthMode = %q, want oidc", cfg.AuthMode)
+	if cfg.AuthMode != "static-bearer" {
+		t.Errorf("AuthMode = %q, want static-bearer", cfg.AuthMode)
 	}
 }
 
@@ -226,9 +228,9 @@ func TestSelectAuthMode(t *testing.T) {
 			want: "app-token",
 		},
 		{
-			name: "infer oidc",
-			cfg:  Config{OidcAccessToken: "tok"},
-			want: "oidc",
+			name: "infer static-bearer",
+			cfg:  Config{BearerToken: "tok"},
+			want: "static-bearer",
 		},
 		{
 			name: "none when empty",
@@ -551,5 +553,142 @@ func TestResourceURI(t *testing.T) {
 				t.Errorf("ResourceURI() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadOutboundAliases(t *testing.T) {
+	const secret = "s3cr3t-DISTINCTIVE-9f8e7d"
+	tests := []struct {
+		name         string
+		env          map[string]string
+		wantMode     string
+		wantUser     string
+		wantValue    string
+		wantBearer   string
+		wantWarnSubs [][]string // one entry per expected warning; every substring must appear
+	}{
+		{name: "new names only, no warnings",
+			env: map[string]string{
+				"OCIS_MCP_OCIS_APP_TOKEN_USER": "u", "OCIS_MCP_OCIS_APP_TOKEN_VALUE": secret},
+			wantMode: "app-token", wantUser: "u", wantValue: secret},
+		{name: "old app token user alias",
+			env: map[string]string{
+				"OCIS_MCP_APP_TOKEN_USER": "u", "OCIS_MCP_OCIS_APP_TOKEN_VALUE": secret},
+			wantMode: "app-token", wantUser: "u", wantValue: secret,
+			wantWarnSubs: [][]string{{"OCIS_MCP_APP_TOKEN_USER", "OCIS_MCP_OCIS_APP_TOKEN_USER", "deprecated"}}},
+		{name: "old app token value alias",
+			env: map[string]string{
+				"OCIS_MCP_OCIS_APP_TOKEN_USER": "u", "OCIS_MCP_APP_TOKEN_VALUE": secret},
+			wantMode: "app-token", wantUser: "u", wantValue: secret,
+			wantWarnSubs: [][]string{{"OCIS_MCP_APP_TOKEN_VALUE", "OCIS_MCP_OCIS_APP_TOKEN_VALUE", "deprecated"}}},
+		{name: "old bearer alias",
+			env:      map[string]string{"OCIS_MCP_OIDC_ACCESS_TOKEN": secret},
+			wantMode: "static-bearer", wantBearer: secret,
+			wantWarnSubs: [][]string{{"OCIS_MCP_OIDC_ACCESS_TOKEN", "OCIS_MCP_OCIS_BEARER_TOKEN", "deprecated"}}},
+		{name: "old auth mode alias",
+			env: map[string]string{
+				"OCIS_MCP_AUTH_MODE":         "app-token",
+				"OCIS_MCP_OCIS_BEARER_TOKEN": secret},
+			wantMode: "app-token", wantBearer: secret,
+			wantWarnSubs: [][]string{{"OCIS_MCP_AUTH_MODE", "OCIS_MCP_OCIS_AUTH_MODE", "deprecated"}}},
+		{name: "legacy oidc mode maps to static-bearer",
+			env: map[string]string{
+				"OCIS_MCP_AUTH_MODE":         "oidc",
+				"OCIS_MCP_OCIS_BEARER_TOKEN": secret},
+			wantMode: "static-bearer", wantBearer: secret,
+			wantWarnSubs: [][]string{{"OCIS_MCP_AUTH_MODE", "OCIS_MCP_OCIS_AUTH_MODE", "deprecated"}}},
+		{name: "new wins over old and old still warns",
+			env: map[string]string{
+				"OCIS_MCP_OCIS_AUTH_MODE": "none", "OCIS_MCP_AUTH_MODE": "app-token",
+				"OCIS_MCP_OCIS_APP_TOKEN_USER": "new-user", "OCIS_MCP_APP_TOKEN_USER": "old-user",
+				"OCIS_MCP_OCIS_APP_TOKEN_VALUE": "new-val", "OCIS_MCP_APP_TOKEN_VALUE": "old-val",
+				"OCIS_MCP_OCIS_BEARER_TOKEN": "new-bearer", "OCIS_MCP_OIDC_ACCESS_TOKEN": "old-bearer"},
+			wantMode: "none", wantUser: "new-user", wantValue: "new-val", wantBearer: "new-bearer",
+			wantWarnSubs: [][]string{
+				{"OCIS_MCP_APP_TOKEN_USER", "OCIS_MCP_OCIS_APP_TOKEN_USER"},
+				{"OCIS_MCP_APP_TOKEN_VALUE", "OCIS_MCP_OCIS_APP_TOKEN_VALUE"},
+				{"OCIS_MCP_OIDC_ACCESS_TOKEN", "OCIS_MCP_OCIS_BEARER_TOKEN"},
+				{"OCIS_MCP_AUTH_MODE", "OCIS_MCP_OCIS_AUTH_MODE"}}},
+		{name: "dead issuer warns and points at the new name",
+			env:          map[string]string{"OCIS_MCP_OIDC_ISSUER": "https://idp." + secret + ".example.com"},
+			wantMode:     "none",
+			wantWarnSubs: [][]string{{"OCIS_MCP_OIDC_ISSUER", "no effect", "OCIS_MCP_HTTP_OIDC_ISSUER"}}},
+		{name: "dead client id warns",
+			env:          map[string]string{"OCIS_MCP_OIDC_CLIENT_ID": "id-" + secret},
+			wantMode:     "none",
+			wantWarnSubs: [][]string{{"OCIS_MCP_OIDC_CLIENT_ID", "no effect"}}},
+		{name: "dead client secret warns",
+			env:          map[string]string{"OCIS_MCP_OIDC_CLIENT_SECRET": secret},
+			wantMode:     "none",
+			wantWarnSubs: [][]string{{"OCIS_MCP_OIDC_CLIENT_SECRET", "no effect"}}},
+		{name: "all three dead variables warn once each",
+			env: map[string]string{
+				"OCIS_MCP_OIDC_ISSUER": "x", "OCIS_MCP_OIDC_CLIENT_ID": "y", "OCIS_MCP_OIDC_CLIENT_SECRET": secret},
+			wantMode: "none",
+			wantWarnSubs: [][]string{
+				{"OCIS_MCP_OIDC_ISSUER", "no effect"},
+				{"OCIS_MCP_OIDC_CLIENT_ID", "no effect"},
+				{"OCIS_MCP_OIDC_CLIENT_SECRET", "no effect"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv()
+			t.Cleanup(clearEnv)
+			t.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if cfg.AuthMode != tt.wantMode {
+				t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, tt.wantMode)
+			}
+			if cfg.AppTokenUser != tt.wantUser || cfg.AppTokenValue != tt.wantValue {
+				t.Errorf("app token user/value mismatch")
+			}
+			if cfg.BearerToken != tt.wantBearer {
+				t.Errorf("BearerToken mismatch")
+			}
+			if len(cfg.Warnings) != len(tt.wantWarnSubs) {
+				t.Fatalf("got %d warnings %q, want %d", len(cfg.Warnings), cfg.Warnings, len(tt.wantWarnSubs))
+			}
+			for i, subs := range tt.wantWarnSubs {
+				for _, sub := range subs {
+					if !strings.Contains(cfg.Warnings[i], sub) {
+						t.Errorf("warning %d = %q, missing %q", i, cfg.Warnings[i], sub)
+					}
+				}
+			}
+			// No warning may carry any configured value.
+			for _, w := range cfg.Warnings {
+				for _, v := range tt.env {
+					if len(v) > 3 && strings.Contains(w, v) {
+						t.Errorf("warning %q contains a setting value", w)
+					}
+				}
+				if strings.Contains(w, secret) {
+					t.Errorf("warning %q contains the secret", w)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadAmbiguousAuthWithOldNames(t *testing.T) {
+	clearEnv()
+	t.Cleanup(clearEnv)
+	t.Setenv("OCIS_MCP_OCIS_URL", "https://ocis.example.com")
+	t.Setenv("OCIS_MCP_APP_TOKEN_USER", "admin")
+	t.Setenv("OCIS_MCP_APP_TOKEN_VALUE", "tok")
+	t.Setenv("OCIS_MCP_OIDC_ACCESS_TOKEN", "bearer-token")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for ambiguous auth")
+	}
+	if !strings.Contains(err.Error(), "OCIS_MCP_OCIS_AUTH_MODE") {
+		t.Errorf("error %q should name OCIS_MCP_OCIS_AUTH_MODE", err)
 	}
 }

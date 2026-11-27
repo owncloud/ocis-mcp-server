@@ -126,8 +126,8 @@ func (c *Client) applyAuth(req *http.Request) {
 	switch c.cfg.AuthMode {
 	case "app-token":
 		req.SetBasicAuth(c.cfg.AppTokenUser, c.cfg.AppTokenValue)
-	case "oidc":
-		req.Header.Set("Authorization", "Bearer "+c.cfg.OidcAccessToken)
+	case "static-bearer":
+		req.Header.Set("Authorization", "Bearer "+c.cfg.BearerToken)
 	}
 }
 

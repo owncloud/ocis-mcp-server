@@ -30,12 +30,12 @@ func newTestConfig(srvURL string) *config.Config {
 
 func TestAuthHeaderInjection(t *testing.T) {
 	tests := []struct {
-		name       string
-		authMode   string
-		user       string
-		tokenValue string
-		oidcToken  string
-		wantPrefix string
+		name        string
+		authMode    string
+		user        string
+		tokenValue  string
+		bearerToken string
+		wantPrefix  string
 	}{
 		{
 			name:       "app-token sends Basic auth",
@@ -45,10 +45,10 @@ func TestAuthHeaderInjection(t *testing.T) {
 			wantPrefix: "Basic ",
 		},
 		{
-			name:       "oidc sends Bearer token",
-			authMode:   "oidc",
-			oidcToken:  "my-access-token",
-			wantPrefix: "Bearer my-access-token",
+			name:        "static-bearer sends Bearer token",
+			authMode:    "static-bearer",
+			bearerToken: "my-access-token",
+			wantPrefix:  "Bearer my-access-token",
 		},
 	}
 
@@ -65,7 +65,7 @@ func TestAuthHeaderInjection(t *testing.T) {
 			cfg.AuthMode = tt.authMode
 			cfg.AppTokenUser = tt.user
 			cfg.AppTokenValue = tt.tokenValue
-			cfg.OidcAccessToken = tt.oidcToken
+			cfg.BearerToken = tt.bearerToken
 			c := New(cfg)
 
 			req, err := c.NewRequest(context.Background(), http.MethodGet, "/test", nil)

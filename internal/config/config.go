@@ -17,18 +17,16 @@ type Config struct {
 	// oCIS connection
 	OcisURL string // OCIS_MCP_OCIS_URL
 
-	// Authentication mode: "app-token" or "oidc" (default: auto-detect)
-	AuthMode string // OCIS_MCP_AUTH_MODE
+	// Outbound authentication mode: "app-token", "static-bearer" or "none" (default:
+	// auto-detect). The legacy value "oidc" is mapped to "static-bearer".
+	AuthMode string // OCIS_MCP_OCIS_AUTH_MODE (alias: OCIS_MCP_AUTH_MODE)
 
 	// App Token auth (preferred for MCP)
-	AppTokenUser  string // OCIS_MCP_APP_TOKEN_USER
-	AppTokenValue string // OCIS_MCP_APP_TOKEN_VALUE
+	AppTokenUser  string // OCIS_MCP_OCIS_APP_TOKEN_USER (alias: OCIS_MCP_APP_TOKEN_USER)
+	AppTokenValue string // OCIS_MCP_OCIS_APP_TOKEN_VALUE (alias: OCIS_MCP_APP_TOKEN_VALUE)
 
-	// OIDC auth (alternative)
-	OidcIssuer       string // OCIS_MCP_OIDC_ISSUER
-	OidcClientID     string // OCIS_MCP_OIDC_CLIENT_ID
-	OidcClientSecret string // OCIS_MCP_OIDC_CLIENT_SECRET
-	OidcAccessToken  string // OCIS_MCP_OIDC_ACCESS_TOKEN
+	// Static bearer token sent to oCIS (alternative)
+	BearerToken string // OCIS_MCP_OCIS_BEARER_TOKEN (alias: OCIS_MCP_OIDC_ACCESS_TOKEN)
 
 	// Education API (optional)
 	EducationAccessToken string // OCIS_MCP_EDUCATION_ACCESS_TOKEN
@@ -63,15 +61,12 @@ type Config struct {
 
 // Load reads configuration from environment variables and validates it.
 func Load() (*Config, error) {
+	var warnings []string
 	cfg := &Config{
 		OcisURL:              os.Getenv("OCIS_MCP_OCIS_URL"),
-		AuthMode:             os.Getenv("OCIS_MCP_AUTH_MODE"),
-		AppTokenUser:         os.Getenv("OCIS_MCP_APP_TOKEN_USER"),
-		AppTokenValue:        os.Getenv("OCIS_MCP_APP_TOKEN_VALUE"),
-		OidcIssuer:           os.Getenv("OCIS_MCP_OIDC_ISSUER"),
-		OidcClientID:         os.Getenv("OCIS_MCP_OIDC_CLIENT_ID"),
-		OidcClientSecret:     os.Getenv("OCIS_MCP_OIDC_CLIENT_SECRET"),
-		OidcAccessToken:      os.Getenv("OCIS_MCP_OIDC_ACCESS_TOKEN"),
+		AppTokenUser:         getenvAlias("OCIS_MCP_OCIS_APP_TOKEN_USER", "OCIS_MCP_APP_TOKEN_USER", &warnings),
+		AppTokenValue:        getenvAlias("OCIS_MCP_OCIS_APP_TOKEN_VALUE", "OCIS_MCP_APP_TOKEN_VALUE", &warnings),
+		BearerToken:          getenvAlias("OCIS_MCP_OCIS_BEARER_TOKEN", "OCIS_MCP_OIDC_ACCESS_TOKEN", &warnings),
 		EducationAccessToken: os.Getenv("OCIS_MCP_EDUCATION_ACCESS_TOKEN"),
 		Transport:            os.Getenv("OCIS_MCP_TRANSPORT"),
 		HTTPAddr:             os.Getenv("OCIS_MCP_HTTP_ADDR"),
@@ -84,6 +79,10 @@ func Load() (*Config, error) {
 		Insecure:             envBool("OCIS_MCP_INSECURE"),
 		TLSSkipVerify:        envBool("OCIS_MCP_TLS_SKIP_VERIFY"),
 	}
+
+	cfg.AuthMode = loadAuthModeEnv(&warnings)
+	warnings = append(warnings, deadVariableWarnings()...)
+	cfg.Warnings = warnings
 
 	// Defaults
 	if cfg.Transport == "" {
@@ -145,12 +144,50 @@ func (c *Config) validate() error {
 
 	// Reject ambiguous auth: both app-token and OIDC set without explicit mode
 	hasAppToken := c.AppTokenUser != "" && c.AppTokenValue != ""
-	hasOIDC := c.OidcAccessToken != ""
-	if hasAppToken && hasOIDC && c.AuthMode == "" {
-		return fmt.Errorf("both app-token and OIDC credentials are set. Set OCIS_MCP_AUTH_MODE explicitly")
+	hasBearer := c.BearerToken != ""
+	if hasAppToken && hasBearer && c.AuthMode == "" {
+		return fmt.Errorf("both app-token and bearer credentials are set. Set OCIS_MCP_OCIS_AUTH_MODE explicitly")
 	}
 
 	return nil
+}
+
+// getenvAlias reads a setting by its current name and falls back to a deprecated name.
+// The new name wins when both are set. A set deprecated name always appends one warning
+// that names both variables and never carries a value.
+func getenvAlias(newName, oldName string, w *[]string) string {
+	oldVal := os.Getenv(oldName)
+	if oldVal != "" {
+		*w = append(*w, fmt.Sprintf("%s is deprecated; use %s instead", oldName, newName))
+	}
+	if v := os.Getenv(newName); v != "" {
+		return v
+	}
+	return oldVal
+}
+
+// loadAuthModeEnv reads the outbound auth mode. The legacy value "oidc" of the deprecated
+// OCIS_MCP_AUTH_MODE means a static bearer token and is mapped to "static-bearer".
+func loadAuthModeEnv(w *[]string) string {
+	v := getenvAlias("OCIS_MCP_OCIS_AUTH_MODE", "OCIS_MCP_AUTH_MODE", w)
+	if os.Getenv("OCIS_MCP_OCIS_AUTH_MODE") == "" && v == "oidc" {
+		return "static-bearer"
+	}
+	return v
+}
+
+// deadVariableWarnings reports settings that were once read but never had any effect.
+func deadVariableWarnings() []string {
+	var out []string
+	if os.Getenv("OCIS_MCP_OIDC_ISSUER") != "" {
+		out = append(out, "OCIS_MCP_OIDC_ISSUER has no effect; use OCIS_MCP_HTTP_OIDC_ISSUER to protect the HTTP transport")
+	}
+	for _, name := range []string{"OCIS_MCP_OIDC_CLIENT_ID", "OCIS_MCP_OIDC_CLIENT_SECRET"} {
+		if os.Getenv(name) != "" {
+			out = append(out, name+" has no effect")
+		}
+	}
+	return out
 }
 
 // parseScopes splits a comma or space separated scope list. An empty list yields the default.
@@ -269,8 +306,8 @@ func selectAuthMode(cfg *Config) string {
 	if cfg.AppTokenUser != "" && cfg.AppTokenValue != "" {
 		return "app-token"
 	}
-	if cfg.OidcAccessToken != "" {
-		return "oidc"
+	if cfg.BearerToken != "" {
+		return "static-bearer"
 	}
 	return "none"
 }

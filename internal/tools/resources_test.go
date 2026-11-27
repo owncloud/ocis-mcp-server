@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -101,23 +102,38 @@ func TestDriveTypesHandler(t *testing.T) {
 }
 
 func TestAuthModeHandler(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-	}))
-	defer srv.Close()
-
-	cfg := newTestConfig(srv.URL)
-	c := client.New(cfg)
-	handler := authModeHandler(c)
-	result, err := handler(context.Background(), &mcp.ReadResourceRequest{
-		Params: &mcp.ReadResourceParams{URI: "ocis://auth-mode"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name     string
+		authMode string
+	}{
+		{name: "app-token config", authMode: "app-token"},
+		{name: "bearer config", authMode: "static-bearer"},
 	}
-	text := result.Contents[0].Text
-	if !strings.Contains(text, "app-token") {
-		t.Errorf("auth mode text doesn't contain 'app-token': %s", text)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(200)
+			}))
+			defer srv.Close()
+
+			cfg := newTestConfig(srv.URL)
+			cfg.AuthMode = tt.authMode
+			c := client.New(cfg)
+			handler := authModeHandler(c)
+			result, err := handler(context.Background(), &mcp.ReadResourceRequest{
+				Params: &mcp.ReadResourceParams{URI: "ocis://auth-mode"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var info map[string]string
+			if err := json.Unmarshal([]byte(result.Contents[0].Text), &info); err != nil {
+				t.Fatalf("auth mode resource is not JSON: %v", err)
+			}
+			if info["auth_mode"] != tt.authMode {
+				t.Errorf("auth_mode = %q, want %q", info["auth_mode"], tt.authMode)
+			}
+		})
 	}
 }
 

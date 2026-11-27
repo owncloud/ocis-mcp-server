@@ -230,9 +230,9 @@ func TestHandleGetConfig(t *testing.T) {
 			wantAuthMode: "app-token",
 		},
 		{
-			name:         "oidc config",
-			authMode:     "oidc",
-			wantAuthMode: "oidc",
+			name:         "bearer config",
+			authMode:     "static-bearer",
+			wantAuthMode: "static-bearer",
 		},
 	}
 
