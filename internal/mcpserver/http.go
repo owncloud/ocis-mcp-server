@@ -3,9 +3,11 @@ package mcpserver
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,39 +146,78 @@ func NewHTTPHandler(server *mcp.Server, a HTTPAuth) (http.Handler, error) {
 	return middleware.SecurityHeaders(inner), nil
 }
 
-// hostAllowlist rejects with 403 any request whose Host is not the public host of
-// resource (with or without the scheme's default port, or the configured port), or a
-// loopback name (localhost, 127.0.0.1, [::1]) on any port. This blocks DNS rebinding
-// without depending on the connection's local address.
+// hostAllowlist rejects with 403 any request whose Host is not the public hostname of
+// resource (on any port, or none) or one of localhost, 127.0.0.1 and [::1] on any port.
+// This blocks DNS rebinding without depending on the connection's local address.
+//
+// The port is deliberately not compared: a reverse proxy that forwards `Host: $host`
+// drops the port of a non-default public URL, and the port adds no rebinding defence
+// because an attacker cannot make a victim's browser send our hostname to another
+// name. Every other form is refused: other hostnames (including prefixes, subdomains
+// and a trailing dot), userinfo, an empty or non numeric port, and bracketed names that
+// are not IP literals.
 func hostAllowlist(resource *url.URL) func(http.Handler) http.Handler {
 	publicHost := strings.ToLower(resource.Hostname())
-	defaultPort := "80"
-	if strings.EqualFold(resource.Scheme, "https") {
-		defaultPort = "443"
-	}
-	port := resource.Port()
-	if port == "" {
-		port = defaultPort
-	}
-	allowedPorts := map[string]bool{port: true}
-	if port == defaultPort {
-		allowedPorts[""] = true
-	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			host, hostPort := r.Host, ""
-			if h, p, err := net.SplitHostPort(r.Host); err == nil {
-				host, hostPort = h, p
-			}
-			host = strings.Trim(strings.ToLower(host), "[]")
-			switch {
-			case host == "localhost", host == "127.0.0.1", host == "::1":
-			case host == publicHost && allowedPorts[hostPort]:
-			default:
+			host, ok := hostnameOf(r.Host)
+			if !ok || (host != publicHost && host != "localhost" && host != "127.0.0.1" && host != "::1") {
+				slog.Debug("rejected request with a Host header outside the allowlist", "host", r.Host)
 				http.Error(w, "forbidden host", http.StatusForbidden)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// hostnameOf extracts the lowercased hostname from a Host header value, without
+// brackets, and reports whether the value is well formed: a bare name, a name with a
+// numeric port, a bare IPv6 literal, or a bracketed IP literal with an optional port.
+func hostnameOf(hostHeader string) (string, bool) {
+	h := strings.ToLower(hostHeader)
+	if strings.HasPrefix(h, "[") {
+		end := strings.Index(h, "]")
+		if end < 0 {
+			return "", false
+		}
+		name, rest := h[1:end], h[end+1:]
+		if net.ParseIP(name) == nil {
+			return "", false
+		}
+		if rest != "" && !validPortSuffix(rest) {
+			return "", false
+		}
+		return name, true
+	}
+	switch strings.Count(h, ":") {
+	case 0:
+		return h, h != ""
+	case 1:
+		i := strings.Index(h, ":")
+		if !validPortSuffix(h[i:]) {
+			return "", false
+		}
+		return h[:i], h[:i] != ""
+	}
+	// More than one colon without brackets: only a bare IPv6 literal is meaningful.
+	if net.ParseIP(h) == nil {
+		return "", false
+	}
+	return h, true
+}
+
+// validPortSuffix reports whether s is ":" followed by a decimal port in 0..65535.
+func validPortSuffix(s string) bool {
+	port, ok := strings.CutPrefix(s, ":")
+	if !ok || port == "" || len(port) > 5 {
+		return false
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n <= 65535
 }
