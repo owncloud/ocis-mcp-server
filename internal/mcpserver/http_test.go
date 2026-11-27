@@ -117,11 +117,14 @@ func TestHTTPServerDiscover(t *testing.T) {
 
 func TestHTTPSDKClients(t *testing.T) {
 	tests := []struct {
-		name    string
-		version string
+		name       string
+		version    string
+		disableSSE bool
 	}{
-		{"legacy 2025-11-25", v2025},
-		{"latest default", ""},
+		{"legacy 2025-11-25, no standalone SSE", v2025, true},
+		{"latest default, no standalone SSE", "", true},
+		{"legacy 2025-11-25, standalone SSE GET", v2025, false},
+		{"latest default, standalone SSE GET", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,7 +132,7 @@ func TestHTTPSDKClients(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			c := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil)
-			cs, err := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: url, DisableStandaloneSSE: true},
+			cs, err := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: url, DisableStandaloneSSE: tt.disableSSE},
 				&mcp.ClientSessionOptions{ProtocolVersion: tt.version})
 			if err != nil {
 				t.Fatalf("connect: %v", err)
@@ -178,14 +181,38 @@ func TestHTTPUnsupportedMethods(t *testing.T) {
 }
 
 func TestHTTPStaleSessionID(t *testing.T) {
-	url, _ := startHTTP(t, "")
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
-	status, _, rpc := rawPost(t, url, map[string]string{
-		"Mcp-Session-Id":       "stale-session-id",
-		"MCP-Protocol-Version": v2025,
-	}, body)
-	if status >= 500 {
-		t.Errorf("status = %d, rpc = %v, want non-5xx", status, rpc)
+	tests := []struct {
+		name    string
+		headers map[string]string
+		body    string
+	}{
+		{
+			name:    "legacy protocol",
+			headers: map[string]string{"MCP-Protocol-Version": v2025},
+			body:    `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`,
+		},
+		{
+			name:    "2026-07-28",
+			headers: headers2026("tools/list", ""),
+			body:    `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta2026(v2026) + `}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url, _ := startHTTP(t, "")
+			h := map[string]string{"Mcp-Session-Id": "stale-session-id"}
+			for k, v := range tt.headers {
+				h[k] = v
+			}
+			status, _, rpc := rawPost(t, url, h, tt.body)
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (rpc %v)", status, rpc)
+			}
+			res := rpcResult(t, rpc)
+			if tools, _ := res["tools"].([]any); len(tools) == 0 {
+				t.Errorf("tools is empty in %v", res)
+			}
+		})
 	}
 }
 
