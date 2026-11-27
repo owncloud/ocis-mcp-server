@@ -2,9 +2,11 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -313,6 +315,86 @@ func TestParseRetryAfter(t *testing.T) {
 			got := parseRetryAfter(tt.val)
 			if got != tt.want {
 				t.Errorf("parseRetryAfter(%q) = %v, want %v", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRetryAfterCap(t *testing.T) {
+	tests := []struct {
+		name string
+		val  string
+		want time.Duration
+	}{
+		{name: "3600s capped to 60s", val: "3600", want: 60 * time.Second},
+		{name: "61s capped to 60s", val: "61", want: 60 * time.Second},
+		{name: "60s at the cap", val: "60", want: 60 * time.Second},
+		{name: "59s under the cap", val: "59", want: 59 * time.Second},
+		{name: "far future HTTP date capped", val: time.Now().Add(2 * time.Hour).UTC().Format(http.TimeFormat), want: 60 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseRetryAfter(tt.val); got != tt.want {
+				t.Errorf("parseRetryAfter(%q) = %v, want %v", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRetryWaitHonorsContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		retryAfter string
+		cancelAt   time.Duration
+	}{
+		{name: "cancel during 30s wait", retryAfter: "30", cancelAt: 50 * time.Millisecond},
+		{name: "cancel during uncapped-looking 3600s wait", retryAfter: "3600", cancelAt: 50 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var hits atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				w.Header().Set("Retry-After", tt.retryAfter)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer srv.Close()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			time.AfterFunc(tt.cancelAt, cancel)
+
+			c := New(newTestConfig(srv.URL))
+			req, err := c.NewRequest(ctx, http.MethodGet, "/test", nil)
+			if err != nil {
+				t.Fatalf("NewRequest failed: %v", err)
+			}
+			type result struct {
+				resp *http.Response
+				err  error
+			}
+			done := make(chan result, 1)
+			start := time.Now()
+			go func() {
+				resp, err := c.Do(req)
+				done <- result{resp, err}
+			}()
+			select {
+			case r := <-done:
+				if r.resp != nil {
+					_ = r.resp.Body.Close()
+				}
+				if !errors.Is(r.err, context.Canceled) {
+					t.Errorf("error = %v, want context.Canceled", r.err)
+				}
+				if elapsed := time.Since(start); elapsed > time.Second {
+					t.Errorf("Do returned after %v, want under 1s", elapsed)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("Do still sleeping 3s after the context was cancelled")
+			}
+			if n := hits.Load(); n != 1 {
+				t.Errorf("server hits = %d, want 1", n)
 			}
 		})
 	}

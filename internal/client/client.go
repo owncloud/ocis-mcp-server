@@ -90,7 +90,13 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			retryAfter := resp.Header.Get("Retry-After")
 			delay := parseRetryAfter(retryAfter)
 			slog.Warn("rate limited, retrying", "attempt", attempt+1, "delay", delay)
-			time.Sleep(delay)
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-req.Context().Done():
+				timer.Stop()
+				return nil, req.Context().Err()
+			}
 			continue
 		}
 
@@ -130,17 +136,26 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
+// maxRetryDelay bounds how long one 429 retry may wait, whatever Retry-After says.
+const maxRetryDelay = 60 * time.Second
+
 func parseRetryAfter(val string) time.Duration {
 	if val == "" {
 		return 2 * time.Second
 	}
 	if secs, err := strconv.Atoi(val); err == nil {
+		if secs < 0 {
+			return 2 * time.Second
+		}
+		if secs > int(maxRetryDelay/time.Second) {
+			return maxRetryDelay
+		}
 		return time.Duration(secs) * time.Second
 	}
 	if t, err := http.ParseTime(val); err == nil {
 		d := time.Until(t)
 		if d > 0 {
-			return d
+			return min(d, maxRetryDelay)
 		}
 	}
 	return 2 * time.Second
