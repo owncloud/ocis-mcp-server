@@ -1,0 +1,100 @@
+package mcpserver
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/owncloud/ocis-mcp-server/internal/client"
+	"github.com/owncloud/ocis-mcp-server/internal/config"
+)
+
+const capabilitiesBody = `{"ocs":{"data":{"version":{"major":7,"minor":1,"micro":3,"string":"7.1.3","edition":"test","product":"Infinite Scale"},"capabilities":{}}}}`
+
+// fakeOCIS is a stand-in oCIS backend with a request counter and a swappable handler.
+type fakeOCIS struct {
+	srv  *httptest.Server
+	hits atomic.Int64
+	mu   sync.RWMutex
+	h    http.HandlerFunc
+}
+
+func newFakeOCIS(t *testing.T) *fakeOCIS {
+	t.Helper()
+	f := &fakeOCIS{}
+	f.h = func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ocs/v1.php/cloud/capabilities" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(capabilitiesBody))
+			return
+		}
+		http.NotFound(w, r)
+	}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.hits.Add(1)
+		f.mu.RLock()
+		h := f.h
+		f.mu.RUnlock()
+		h(w, r)
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+// Hits returns the number of requests received so far.
+func (f *fakeOCIS) Hits() int { return int(f.hits.Load()) }
+
+// SetHandler replaces the handler serving requests.
+func (f *fakeOCIS) SetHandler(h http.HandlerFunc) {
+	f.mu.Lock()
+	f.h = h
+	f.mu.Unlock()
+}
+
+func newTestConfig(srvURL, educationToken string) *config.Config {
+	return &config.Config{
+		OcisURL:              srvURL,
+		AuthMode:             "app-token",
+		AppTokenUser:         "admin",
+		AppTokenValue:        "test-token",
+		EducationAccessToken: educationToken,
+		Transport:            "stdio",
+		HTTPAddr:             "127.0.0.1:8090",
+		LogLevel:             "info",
+		HTTPTimeout:          30 * time.Second,
+		Insecure:             true,
+	}
+}
+
+// newTestServer builds the MCP server against a fake oCIS.
+func newTestServer(t *testing.T, educationToken string) (*mcp.Server, *fakeOCIS) {
+	t.Helper()
+	fake := newFakeOCIS(t)
+	cfg := newTestConfig(fake.srv.URL, educationToken)
+	return New("test", client.New(cfg), cfg), fake
+}
+
+// connectInMemory connects a client to s over an in-memory transport.
+// An empty protocolVersion means the SDK's latest.
+func connectInMemory(t *testing.T, s *mcp.Server, protocolVersion string) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	st, ct := mcp.NewInMemoryTransports()
+	ss, err := s.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+	c := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0"}, nil)
+	cs, err := c.Connect(ctx, ct, &mcp.ClientSessionOptions{ProtocolVersion: protocolVersion})
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}

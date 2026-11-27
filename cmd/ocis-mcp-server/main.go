@@ -13,8 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 	"github.com/owncloud/ocis-mcp-server/internal/config"
-	"github.com/owncloud/ocis-mcp-server/internal/middleware"
-	"github.com/owncloud/ocis-mcp-server/internal/tools"
+	"github.com/owncloud/ocis-mcp-server/internal/mcpserver"
 )
 
 // version is set at build time via -ldflags "-X main.version=..."
@@ -38,15 +37,7 @@ func main() {
 
 	ocisClient := client.New(cfg)
 
-	server := mcp.NewServer(
-		&mcp.Implementation{
-			Name:    "ocis-mcp-server",
-			Version: version,
-		},
-		nil,
-	)
-
-	tools.RegisterAll(server, ocisClient, cfg)
+	server := mcpserver.New(version, ocisClient, cfg)
 
 	slog.Info("starting ocis-mcp-server",
 		"version", version,
@@ -70,16 +61,6 @@ func main() {
 }
 
 func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
-	handler := mcp.NewStreamableHTTPHandler(
-		func(_ *http.Request) *mcp.Server { return server },
-		nil,
-	)
-
-	// Authenticate every /mcp request with a bearer token (no-op when no secret is set;
-	// config validation forbids that on a non-loopback bind), then add security headers.
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(cfg.HTTPSecret)(handler)))
-
 	addr := cfg.HTTPAddr
 	if !cfg.IsLoopbackBind() {
 		slog.Warn("HTTP server bound to a non-loopback interface — ensure this is intentional and network-restricted",
@@ -97,7 +78,7 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 			"addr", addr)
 	}
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mcpserver.NewHTTPHandler(server, cfg.HTTPSecret)}
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down HTTP server")
