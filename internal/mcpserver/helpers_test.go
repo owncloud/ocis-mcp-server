@@ -115,6 +115,10 @@ func doRawPost(ctx context.Context, url string, headers map[string]string, body 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	for k, v := range headers {
+		if strings.EqualFold(k, "Host") {
+			req.Host = v // net/http ignores a Host entry in req.Header
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	resp, err := httpClient.Do(req)

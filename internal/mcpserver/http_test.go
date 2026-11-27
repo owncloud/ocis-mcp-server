@@ -264,6 +264,69 @@ func TestHTTPHeaderValidation(t *testing.T) {
 	}
 }
 
+func TestNewHTTPServerTimeouts(t *testing.T) {
+	srv := NewHTTPServer(http.NewServeMux())
+	tests := []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"ReadHeaderTimeout", srv.ReadHeaderTimeout, 10 * time.Second},
+		{"IdleTimeout", srv.IdleTimeout, 120 * time.Second},
+		{"ReadTimeout unset for streaming", srv.ReadTimeout, 0},
+		{"WriteTimeout unset for streaming", srv.WriteTimeout, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHTTPRejects(t *testing.T) {
+	small := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ocis_get_version","arguments":{},` + meta2026(v2026) + `}}`
+	big := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ocis_get_version","arguments":{"pad":"` +
+		strings.Repeat("a", 4<<20+1) + `"},` + meta2026(v2026) + `}}`
+	const sameOrigin = "same-origin" // replaced with the test server's own origin
+	tests := []struct {
+		name       string
+		extra      map[string]string
+		body       string
+		wantStatus int
+		wantHits   int
+	}{
+		{"control: small body, no Origin", nil, small, http.StatusOK, 1},
+		{"body over 4 MiB", nil, big, http.StatusRequestEntityTooLarge, 0},
+		{"cross-origin POST", map[string]string{"Origin": "https://evil.example"}, small, http.StatusForbidden, 0},
+		{"control: same-origin POST", map[string]string{"Origin": sameOrigin}, small, http.StatusOK, 1},
+		{"foreign Host", map[string]string{"Host": "evil.example"}, small, http.StatusForbidden, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url, fake := startHTTP(t, "")
+			h := headers2026("tools/call", "ocis_get_version")
+			for k, v := range tt.extra {
+				if v == sameOrigin {
+					v = strings.TrimSuffix(url, "/mcp")
+				}
+				h[k] = v
+			}
+			status, _, rpc := rawPost(t, url, h, tt.body)
+			if status != tt.wantStatus {
+				t.Errorf("status = %d, want %d (rpc %v)", status, tt.wantStatus, rpc)
+			}
+			if tt.wantStatus == http.StatusOK {
+				rpcResult(t, rpc)
+			}
+			if n := fake.Hits(); n != tt.wantHits {
+				t.Errorf("fake oCIS saw %d requests, want %d", n, tt.wantHits)
+			}
+		})
+	}
+}
+
 func TestHTTPClientDisconnectCancels(t *testing.T) {
 	url, fake := startHTTP(t, "")
 	received := make(chan struct{})

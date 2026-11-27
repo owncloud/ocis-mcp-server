@@ -78,7 +78,7 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 			"addr", addr)
 	}
 
-	srv := &http.Server{Handler: mcpserver.NewHTTPHandler(server, cfg.HTTPSecret)}
+	srv := mcpserver.NewHTTPServer(mcpserver.NewHTTPHandler(server, cfg.HTTPSecret))
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down HTTP server")
