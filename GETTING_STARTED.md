@@ -145,8 +145,8 @@ You can find it by running `pwd` in the terminal while inside the project folder
       "command": "/full/path/to/ocis-mcp-server",
       "env": {
         "OCIS_MCP_OCIS_URL": "https://your-ocis-server.example.com",
-        "OCIS_MCP_APP_TOKEN_USER": "admin",
-        "OCIS_MCP_APP_TOKEN_VALUE": "your-token-here"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "admin",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "your-token-here"
       }
     }
   }
@@ -171,8 +171,8 @@ You can find it by running `pwd` in the terminal while inside the project folder
       "command": "C:\\Users\\yourname\\ocis-mcp-server\\ocis-mcp-server.exe",
       "env": {
         "OCIS_MCP_OCIS_URL": "https://your-ocis-server.example.com",
-        "OCIS_MCP_APP_TOKEN_USER": "admin",
-        "OCIS_MCP_APP_TOKEN_VALUE": "your-token-here"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "admin",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "your-token-here"
       }
     }
   }
@@ -197,8 +197,8 @@ You can find it by running `pwd` in the terminal while inside the project folder
       "command": "/full/path/to/ocis-mcp-server",
       "env": {
         "OCIS_MCP_OCIS_URL": "https://your-ocis-server.example.com",
-        "OCIS_MCP_APP_TOKEN_USER": "admin",
-        "OCIS_MCP_APP_TOKEN_VALUE": "your-token-here"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "admin",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "your-token-here"
       }
     }
   }
@@ -301,8 +301,8 @@ Create the file `~/.mcphost.json`:
       "command": ["/full/path/to/ocis-mcp-server"],
       "environment": {
         "OCIS_MCP_OCIS_URL": "https://your-ocis-server.example.com",
-        "OCIS_MCP_APP_TOKEN_USER": "admin",
-        "OCIS_MCP_APP_TOKEN_VALUE": "your-token-here"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "admin",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "your-token-here"
       }
     }
   }

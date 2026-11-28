@@ -70,62 +70,121 @@ The server exposes 80 tools in 13 categories:
 | **OCM** | 4 | `ocis_ocm_create_share`, `ocis_ocm_list_received` |
 | **Workflows** | 5 | `ocis_upload_and_share`, `ocis_create_project_space` |
 
-### Authentication
+### Authentication to oCIS (outbound)
 
-**App Tokens (recommended):** Create in the oCIS web UI under Settings > Security > App tokens.
+**App tokens (recommended):** create one in the oCIS web UI under Settings > Security > App tokens.
 
 ```bash
 export OCIS_MCP_OCIS_URL="https://ocis.example.com"
-export OCIS_MCP_APP_TOKEN_USER="admin"
-export OCIS_MCP_APP_TOKEN_VALUE="<token>"
+export OCIS_MCP_OCIS_APP_TOKEN_USER="admin"
+export OCIS_MCP_OCIS_APP_TOKEN_VALUE="<token>"
 ```
 
-**OIDC (alternative):**
+**Static bearer token (alternative):**
 
 ```bash
-export OCIS_MCP_AUTH_MODE="oidc"
-export OCIS_MCP_OIDC_ACCESS_TOKEN="<access-token>"
+export OCIS_MCP_OCIS_AUTH_MODE="static-bearer"
+export OCIS_MCP_OCIS_BEARER_TOKEN="<access-token>"
 ```
+
+The token is read once at startup. This is an outbound credential only. It is not OIDC login.
 
 ### Key Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
 | `OCIS_MCP_OCIS_URL` | Yes | Base URL of the oCIS instance |
+| `OCIS_MCP_OCIS_AUTH_MODE` | No | `app-token`, `static-bearer` or `none`. Inferred from the credentials set. An unknown value is a startup error. |
 | `OCIS_MCP_TRANSPORT` | No | `stdio` (default) or `http` |
 | `OCIS_MCP_HTTP_ADDR` | No | Listen address for HTTP transport (default `127.0.0.1:8090`) |
-| `OCIS_MCP_HTTP_SECRET` | No* | Shared secret required as `Authorization: Bearer <secret>` on `/mcp`. *Required when the HTTP transport binds a non-loopback address. |
+| `OCIS_MCP_HTTP_AUTH` | No | Inbound auth for HTTP: `oidc`, `secret` (deprecated) or `none`. Inferred when unset. |
+| `OCIS_MCP_HTTP_PUBLIC_URL` | oidc | Public origin of this server, for example `https://mcp.example.com`. No path. |
+| `OCIS_MCP_HTTP_OIDC_ISSUER` | oidc | Issuer URL, exactly as the IdP advertises it |
+| `OCIS_MCP_HTTP_OIDC_SCOPES` | No | Required scopes, space or comma separated (default `ocis:mcp`) |
+| `OCIS_MCP_HTTP_OIDC_CA_FILE` | No | PEM file with an extra CA for the issuer, for self-signed IdPs |
+| `OCIS_MCP_HTTP_SECRET` | secret | Shared secret for the deprecated `secret` mode |
 | `OCIS_MCP_LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` |
+
+Renamed settings keep working and log one deprecation warning each:
+
+| Old name | New name |
+|---|---|
+| `OCIS_MCP_APP_TOKEN_USER` | `OCIS_MCP_OCIS_APP_TOKEN_USER` |
+| `OCIS_MCP_APP_TOKEN_VALUE` | `OCIS_MCP_OCIS_APP_TOKEN_VALUE` |
+| `OCIS_MCP_AUTH_MODE` | `OCIS_MCP_OCIS_AUTH_MODE` (the value `oidc` maps to `static-bearer`) |
+| `OCIS_MCP_OIDC_ACCESS_TOKEN` | `OCIS_MCP_OCIS_BEARER_TOKEN` |
+
+`OCIS_MCP_OIDC_ISSUER`, `OCIS_MCP_OIDC_CLIENT_ID` and `OCIS_MCP_OIDC_CLIENT_SECRET` never had an effect.
+They are ignored with a warning. For inbound OIDC use `OCIS_MCP_HTTP_OIDC_ISSUER`.
 
 ### Securing the HTTP transport
 
-The HTTP transport runs every tool with the server's configured oCIS credential (often an
-admin app token). The `/mcp` endpoint therefore controls the full tool inventory, so it must
-not be reachable by untrusted callers.
+The HTTP transport implements the MCP 2026-07-28 stateless transport. In `oidc` mode it is an
+OAuth 2.1 resource server: it validates access tokens from your IdP locally and publishes
+protected resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource/mcp`.
 
-- **Authenticate callers.** Set `OCIS_MCP_HTTP_SECRET` to a long random value. The server then
-  requires `Authorization: Bearer <secret>` on every `/mcp` request and rejects others with
-  `401`. Configure your MCP client to send that header.
-- **Non-loopback binds require a secret.** When `OCIS_MCP_TRANSPORT=http` binds a non-loopback
-  address (for example `0.0.0.0:8090`, a routable IP, or a bare `:8090`) and no
-  `OCIS_MCP_HTTP_SECRET` is set, the server refuses to start. Binding the default
-  `127.0.0.1:8090` without a secret is allowed but logs a warning, because any local process
-  could otherwise drive the tools.
-- **Terminate TLS and restrict the network.** Front the server with TLS (a reverse proxy) and
-  limit reachability with firewall / network policy; do not expose `/mcp` directly to the
-  internet.
-- **Prefer `stdio`** (the default) for single-client, local use such as Claude Desktop — it has
-  no network listener.
-- **There is no per-caller authorization.** `OCIS_MCP_HTTP_SECRET` gates access to the endpoint,
-  not to individual tools or accounts. Every caller who presents a valid bearer token gets the
-  full tool inventory running with the one oCIS credential configured on the server — if that
-  credential is an admin app token, every caller effectively has admin access. Do not put this
-  behind a gateway that forwards a shared secret to multiple end users unless you're comfortable
-  granting all of them that credential's privileges.
-- **Credential rotation requires a restart.** The configured app token or OIDC access token is
-  read once at startup; there is no hot-reload. If it expires or is revoked, every tool call
-  starts failing with an authentication error from oCIS until the process is restarted with a
-  fresh credential. Factor the resulting downtime into how short you make the app token's TTL.
+Minimal setup:
+
+```bash
+export OCIS_MCP_TRANSPORT=http
+export OCIS_MCP_HTTP_ADDR=0.0.0.0:8090
+export OCIS_MCP_HTTP_AUTH=oidc
+export OCIS_MCP_HTTP_PUBLIC_URL=https://mcp.example.com
+export OCIS_MCP_HTTP_OIDC_ISSUER=https://idp.example.com/realms/main
+```
+
+Requirements for the IdP and tokens:
+
+- The issuer must match the IdP's advertised `issuer` exactly, and the IdP must be reachable at startup.
+  The issuer and its `jwks_uri` must use https. Plain http is accepted for loopback only. Use
+  `OCIS_MCP_HTTP_OIDC_CA_FILE` for a private CA.
+- The access token `aud` must contain `<public-url>/mcp` (RFC 8707). In Keycloak add an audience
+  mapper with that custom audience. The `azp` claim is not accepted instead of `aud`.
+- The token needs the scope `ocis:mcp` (or your `OCIS_MCP_HTTP_OIDC_SCOPES`). Both the `scope`
+  string and the `scp` array are read.
+- Tokens must be signed with RS256, PS256 or ES256, carry a `kid`, `sub` and `exp`, and be at most
+  8 KiB. Large group claims in Keycloak or Azure can exceed that, so trim them.
+- Signing keys are cached for up to an hour. An unknown `kid` triggers one refetch, at most once per
+  60 seconds, so a rotated key can take up to a minute to be accepted. Revocation takes effect when
+  the token expires, so keep access token lifetimes short.
+- A missing or wrong token gets `401` with a `WWW-Authenticate` challenge that carries the metadata
+  URL and scope. A token without the required scope gets `403`. The SDK does not add an `error=`
+  parameter to these challenges.
+
+Behind a reverse proxy:
+
+- In `oidc` mode the server accepts requests whose `Host` is the public hostname (any port) or a
+  loopback name, and refuses others with `403`. Browsers on another origin get `403`. Only the
+  public origin is trusted.
+- Terminate TLS at the proxy and restrict the network. Do not expose `/mcp` to the internet without it.
+
+Other modes:
+
+- `secret` is deprecated. `OCIS_MCP_HTTP_SECRET` is a shared bearer secret. Prefer `oidc`.
+- `none` disables auth and is allowed on loopback only. Never put a proxy in front of a `none`
+  server, because the server cannot tell proxied callers from local ones.
+- Without `OCIS_MCP_HTTP_AUTH`, the mode is `oidc` when an issuer is set, `secret` when only a secret
+  is set, and `none` otherwise (loopback only, with a warning). Setting both is a startup error.
+- **Prefer `stdio`** (the default) for single-client, local use such as Claude Desktop. It has no
+  network listener.
+
+Limitations:
+
+- **Every authenticated caller acts as the same oCIS user.** Inbound auth decides who may call the
+  server. It does not change which oCIS identity runs the tools: that is the one outbound credential
+  configured on the server. If it is an admin app token, every authorized caller has admin access.
+  The audit log (`iss`, `sub`, tool, outcome per `tools/call`, at Info level) is the only per-caller
+  record. It is hidden when `OCIS_MCP_LOG_LEVEL` is `warn` or higher.
+- **Credential rotation requires a restart.** The outbound token is read once at startup. If it
+  expires or is revoked, every tool call fails until the process restarts with a fresh one.
+- The transport is stateless. There is no session and no server-initiated GET stream.
+- No MCP conformance claim is made.
+
+### Running the integration test
+
+`make test-integration` starts a real Keycloak 26.2.5 container with Docker and checks a valid token,
+a wrong audience, a missing scope and a missing token. It needs Docker and network access for the
+first image pull. The realm file contains a dummy client secret that is not for use anywhere else.
 
 ### MCP Resources and Prompts
 
