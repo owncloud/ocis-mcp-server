@@ -11,10 +11,10 @@ import (
 	"syscall"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/owncloud/ocis-mcp-server/internal/auth"
 	"github.com/owncloud/ocis-mcp-server/internal/client"
 	"github.com/owncloud/ocis-mcp-server/internal/config"
-	"github.com/owncloud/ocis-mcp-server/internal/middleware"
-	"github.com/owncloud/ocis-mcp-server/internal/tools"
+	"github.com/owncloud/ocis-mcp-server/internal/mcpserver"
 )
 
 // version is set at build time via -ldflags "-X main.version=..."
@@ -36,17 +36,13 @@ func main() {
 		slog.Warn("insecure mode enabled — plaintext HTTP allowed (OCIS_MCP_INSECURE=true)")
 	}
 
+	for _, w := range cfg.Warnings {
+		slog.Warn(w)
+	}
+
 	ocisClient := client.New(cfg)
 
-	server := mcp.NewServer(
-		&mcp.Implementation{
-			Name:    "ocis-mcp-server",
-			Version: version,
-		},
-		nil,
-	)
-
-	tools.RegisterAll(server, ocisClient, cfg)
+	server := mcpserver.New(version, ocisClient, cfg)
 
 	slog.Info("starting ocis-mcp-server",
 		"version", version,
@@ -70,20 +66,18 @@ func main() {
 }
 
 func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
-	handler := mcp.NewStreamableHTTPHandler(
-		func(_ *http.Request) *mcp.Server { return server },
-		nil,
-	)
-
-	// Authenticate every /mcp request with a bearer token (no-op when no secret is set;
-	// config validation forbids that on a non-loopback bind), then add security headers.
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(cfg.HTTPSecret)(handler)))
-
 	addr := cfg.HTTPAddr
 	if !cfg.IsLoopbackBind() {
-		slog.Warn("HTTP server bound to a non-loopback interface — ensure this is intentional and network-restricted",
+		slog.Warn("HTTP server bound to a non-loopback interface, ensure this is intentional and network-restricted",
 			"addr", addr)
+	}
+
+	// Build the whole auth configuration before listening, so nothing is ever served
+	// unauthenticated by accident.
+	handler, err := buildHTTPHandler(ctx, server, cfg)
+	if err != nil {
+		slog.Error("HTTP transport configuration error", "mode", cfg.HTTPAuth, "error", err)
+		os.Exit(1)
 	}
 
 	listener, err := net.Listen("tcp", addr)
@@ -91,13 +85,19 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 		slog.Error("failed to listen", "addr", addr, "error", err)
 		os.Exit(1)
 	}
-	slog.Info("HTTP transport listening", "addr", addr, "authenticated", cfg.HTTPAuthEnabled())
-	if !cfg.HTTPAuthEnabled() {
-		slog.Warn("HTTP transport is UNAUTHENTICATED (OCIS_MCP_HTTP_SECRET not set): any client that can reach this address can invoke every tool with the server's oCIS credentials. Set OCIS_MCP_HTTP_SECRET to require an 'Authorization: Bearer' token.",
+
+	authenticated := cfg.HTTPAuth == mcpserver.AuthModeOIDC || cfg.HTTPAuth == mcpserver.AuthModeSecret
+	slog.Info("HTTP transport listening", "addr", addr, "auth_mode", cfg.HTTPAuth, "authenticated", authenticated)
+	switch cfg.HTTPAuth {
+	case mcpserver.AuthModeOIDC:
+		slog.Info("OIDC inbound authentication enabled",
+			"issuer", cfg.HTTPOIDCIssuer, "resource", cfg.ResourceURI())
+	case mcpserver.AuthModeNone:
+		slog.Warn("HTTP transport has no authentication (OCIS_MCP_HTTP_AUTH=none): reachable from this host only (loopback)",
 			"addr", addr)
 	}
 
-	srv := &http.Server{Handler: mux}
+	srv := mcpserver.NewHTTPServer(handler)
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down HTTP server")
@@ -108,6 +108,35 @@ func runHTTP(ctx context.Context, server *mcp.Server, cfg *config.Config) {
 		slog.Error("HTTP server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+// buildHTTPHandler builds the authenticated HTTP handler for the configured mode. In oidc
+// mode it discovers the issuer (the discovery document and the jwks_uri) and fails if
+// that is not possible; the signing keys themselves are fetched lazily on the first
+// token and refreshed afterwards. Errors never contain a token or secret.
+func buildHTTPHandler(ctx context.Context, server *mcp.Server, cfg *config.Config) (http.Handler, error) {
+	a := mcpserver.HTTPAuth{Mode: cfg.HTTPAuth, Secret: cfg.HTTPSecret}
+	if cfg.HTTPAuth == mcpserver.AuthModeOIDC {
+		hc, err := auth.NewIssuerHTTPClient(cfg.HTTPOIDCCAFile)
+		if err != nil {
+			return nil, err
+		}
+		v, err := auth.NewVerifier(ctx, auth.VerifierOptions{
+			Issuer:     cfg.HTTPOIDCIssuer,
+			Resource:   cfg.ResourceURI(),
+			HTTPClient: hc,
+		})
+		if err != nil {
+			return nil, err
+		}
+		a.PublicURL = cfg.HTTPPublicURL
+		a.Resource = cfg.ResourceURI()
+		a.Issuer = cfg.HTTPOIDCIssuer
+		a.MetadataURL = cfg.MetadataURL()
+		a.Scopes = cfg.HTTPOIDCScopes
+		a.Verifier = v.Verify
+	}
+	return mcpserver.NewHTTPHandler(server, a)
 }
 
 func initLogger(level string) {

@@ -13,12 +13,31 @@ func okHandler() http.Handler {
 	})
 }
 
-func TestRequireBearer_NoSecretIsPassthrough(t *testing.T) {
-	h := RequireBearer("")(okHandler())
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/mcp", nil))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("passthrough: want 200, got %d", rr.Code)
+func TestRequireBearer_EmptySecretFailsClosed(t *testing.T) {
+	tests := []struct {
+		name string
+		auth string
+	}{
+		{"no header", ""},
+		{"empty bearer", "Bearer "},
+		{"some bearer", "Bearer anything"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := RequireBearer("")(okHandler())
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			if tt.auth != "" {
+				req.Header.Set("Authorization", tt.auth)
+			}
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("empty secret: want 401, got %d", rr.Code)
+			}
+			if rr.Header().Get("WWW-Authenticate") == "" {
+				t.Error("missing WWW-Authenticate header")
+			}
+		})
 	}
 }
 

@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - Unreleased
+
+### Added
+
+- **Inbound OIDC for the HTTP transport.** `OCIS_MCP_HTTP_AUTH=oidc` makes the server an OAuth 2.1
+  resource server. It validates JWT access tokens locally (RS256, PS256, ES256) against the issuer's
+  JWKS, enforces issuer, audience (`<public-url>/mcp`, RFC 8707), expiry, subject and scope, and
+  publishes RFC 9728 metadata at `/.well-known/oauth-protected-resource/mcp`. New settings:
+  `OCIS_MCP_HTTP_AUTH`, `OCIS_MCP_HTTP_PUBLIC_URL`, `OCIS_MCP_HTTP_OIDC_ISSUER`,
+  `OCIS_MCP_HTTP_OIDC_SCOPES`, `OCIS_MCP_HTTP_OIDC_CA_FILE`. Each `tools/call` is audit logged
+  with `iss`, `sub`, tool and outcome.
+- **MCP spec 2026-07-28** stateless HTTP transport, with older clients still negotiated by the SDK.
+- Keycloak integration test (`make test-integration`).
+
+### Changed
+
+- **Settings renamed** to separate inbound from outbound. `OCIS_MCP_APP_TOKEN_USER`,
+  `OCIS_MCP_APP_TOKEN_VALUE`, `OCIS_MCP_AUTH_MODE` and `OCIS_MCP_OIDC_ACCESS_TOKEN` are now
+  `OCIS_MCP_OCIS_APP_TOKEN_USER`, `OCIS_MCP_OCIS_APP_TOKEN_VALUE`, `OCIS_MCP_OCIS_AUTH_MODE` and
+  `OCIS_MCP_OCIS_BEARER_TOKEN`. The old names still work and log a deprecation warning.
+- The outbound auth mode `oidc` is now `static-bearer` (the old value is mapped with a warning).
+  The `auth_mode` tool output and the `ocis://auth-mode` resource report `static-bearer`.
+- An unknown `OCIS_MCP_OCIS_AUTH_MODE` is a startup error. It used to send no Authorization header.
+- In HTTP mode a cross-origin browser request gets `403`. In `oidc` mode only the public origin is
+  trusted, and the Host header must be the public hostname or a loopback name.
+- `OCIS_MCP_HTTP_AUTH=secret` (the shared secret) is deprecated in favor of `oidc`.
+- A retry wait after HTTP 429 now honors cancellation and is capped at 60 seconds.
+
+### Fixed
+
+- `OCIS_MCP_OIDC_ISSUER`, `OCIS_MCP_OIDC_CLIENT_ID` and `OCIS_MCP_OIDC_CLIENT_SECRET` were read
+  but never used. They are removed and ignored with a warning.
+
+### Security
+
+- Every authenticated caller still acts as the one outbound oCIS identity. Inbound auth does not
+  map callers to oCIS users.
+- The SDK's 401 and 403 challenges carry no `error=` parameter.
+
+### Compatibility
+
+- Go 1.26+
+- oCIS 8.x
+- MCP via `github.com/modelcontextprotocol/go-sdk` v1.8.0
+- New direct dependencies: `github.com/golang-jwt/jwt/v5` v5.3.1, `golang.org/x/sync` v0.20.0
+
 ## [1.1.0] - 2026-07-14
 
 ### Added

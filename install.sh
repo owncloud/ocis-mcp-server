@@ -316,8 +316,8 @@ write_claude_config() {
       "command": "$json_path",
       "env": {
         "OCIS_MCP_OCIS_URL": "$OCIS_URL",
-        "OCIS_MCP_APP_TOKEN_USER": "$TOKEN_USER",
-        "OCIS_MCP_APP_TOKEN_VALUE": "$TOKEN_VALUE"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "$TOKEN_USER",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "$TOKEN_VALUE"
       }
     }
   }
@@ -369,8 +369,8 @@ write_mcphost_config() {
       "command": "$json_path",
       "env": {
         "OCIS_MCP_OCIS_URL": "$OCIS_URL",
-        "OCIS_MCP_APP_TOKEN_USER": "$TOKEN_USER",
-        "OCIS_MCP_APP_TOKEN_VALUE": "$TOKEN_VALUE"
+        "OCIS_MCP_OCIS_APP_TOKEN_USER": "$TOKEN_USER",
+        "OCIS_MCP_OCIS_APP_TOKEN_VALUE": "$TOKEN_VALUE"
       }
     }
   }
